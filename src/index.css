@@ -1,0 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #0f2a0f;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  overflow-x: hidden;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+@keyframes onboardingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes onboardingCubeFloat {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.1;
+  }
+
+  50% {
+    transform: translateY(-18px) rotate(120deg);
+    opacity: 0.26;
+  }
+
+  100% {
+    transform: translateY(0) rotate(240deg);
+    opacity: 0.1;
+  }
+}
+
+.onboarding-fade-in {
+  animation: onboardingFadeIn 0.5s ease both;
+}
+
+.onboarding-cube {
+  animation-name: onboardingCubeFloat;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
