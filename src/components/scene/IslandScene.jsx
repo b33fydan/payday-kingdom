@@ -4,20 +4,23 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { useBudgetStore } from '../../store/budgetStore.js';
 import { useGameStore } from '../../store/gameStore.js';
 import {
+  buildGroundPlatform,
   buildDynamicEntities,
   buildIslandStage,
   clearGroup,
   disposeObject3D,
+  updateDynamicEntityAnimations,
   updateIslandGrowthAnimations
 } from '../../utils/budgetSceneBuilder.js';
 import { getHeroArmorColor, createHero } from '../../utils/heroBuilder.js';
 import { getBannerColorHex } from '../../utils/kingdomTheme.js';
 import { soundManager } from '../../utils/soundManager.js';
-import { ISLAND_SIZE, SCENE_BACKGROUND } from '../../utils/constants.js';
+import { VOXEL_HALF } from '../../utils/voxelBuilder.js';
 import { COLORS, createVoxel } from '../../utils/voxelBuilder.js';
 
 const BASE_FPS = 60;
 const FRAME_MS = 1000 / BASE_FPS;
+const HERO_STAND_Y = VOXEL_HALF;
 
 function lerp(start, end, t) {
   return start + (end - start) * t;
@@ -31,11 +34,6 @@ function easeInOutSine(t) {
   return -(Math.cos(Math.PI * t) - 1) / 2;
 }
 
-function getCameraDistanceForStage(stage) {
-  const safeStage = Math.max(0, Math.min(6, Math.floor(Number(stage) || 0)));
-  return 13.5 + safeStage * 0.65;
-}
-
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -44,24 +42,8 @@ function formatCurrency(value) {
   }).format(Number(value) || 0);
 }
 
-function buildIsland(scene) {
-  const islandGroup = new THREE.Group();
-  const half = (ISLAND_SIZE - 1) / 2;
-
-  for (let x = 0; x < ISLAND_SIZE; x += 1) {
-    for (let z = 0; z < ISLAND_SIZE; z += 1) {
-      const yOffset = Math.random() * 0.2;
-      const grassColor = x % 2 === 0 ? COLORS.grassBase : COLORS.grassLight;
-      const voxel = createVoxel(x - half, yOffset, z - half, grassColor, 1);
-      islandGroup.add(voxel);
-    }
-  }
-
-  scene.add(islandGroup);
-}
-
 function addWater(scene) {
-  const waterGeometry = new THREE.PlaneGeometry(22, 22);
+  const waterGeometry = new THREE.PlaneGeometry(30, 30);
   const waterMaterial = new THREE.MeshStandardMaterial({
     color: COLORS.waterBase,
     transparent: true,
@@ -73,7 +55,7 @@ function addWater(scene) {
 
   const water = new THREE.Mesh(waterGeometry, waterMaterial);
   water.rotation.x = -Math.PI / 2;
-  water.position.y = -0.6;
+  water.position.y = -1.05;
   water.receiveShadow = true;
   scene.add(water);
 }
@@ -342,17 +324,13 @@ export default function IslandScene({ onSceneReady = null }) {
     kingdomFlagRef.current = flag;
   };
 
-  const updateCameraForStage = (stage, snapToStageDistance = false) => {
+  const updateCameraForStage = () => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
 
     if (!camera || !controls) {
       return;
     }
-
-    const targetDistance = getCameraDistanceForStage(stage);
-    controls.minDistance = Math.max(8, targetDistance - 3.5);
-    controls.maxDistance = targetDistance + 3.5;
 
     const target = controls.target.clone();
     const offset = camera.position.clone().sub(target);
@@ -361,7 +339,7 @@ export default function IslandScene({ onSceneReady = null }) {
     }
 
     const currentDistance = offset.length();
-    const nextDistance = snapToStageDistance ? targetDistance : Math.max(currentDistance, targetDistance);
+    const nextDistance = THREE.MathUtils.clamp(currentDistance, 4, 20);
     offset.setLength(nextDistance);
     camera.position.copy(target.add(offset));
     camera.lookAt(controls.target);
@@ -414,7 +392,7 @@ export default function IslandScene({ onSceneReady = null }) {
     await animateValue(
       500,
       (t) => {
-        hero.position.y = lerp(-2, 0.5, t);
+        hero.position.y = lerp(-2, HERO_STAND_Y, t);
       },
       easeOutCubic
     );
@@ -434,7 +412,7 @@ export default function IslandScene({ onSceneReady = null }) {
       }
 
       const target = monster.position.clone();
-      target.set(target.x, 0.5, target.z + 0.68);
+      target.set(target.x, HERO_STAND_Y, target.z + 0.42);
 
       const startPos = hero.position.clone();
       const startRotation = hero.rotation.y;
@@ -492,7 +470,11 @@ export default function IslandScene({ onSceneReady = null }) {
     await animateValue(
       280,
       (t) => {
-        hero.position.set(lerp(centerStart.x, 0, t), lerp(centerStart.y, 0.5, t), lerp(centerStart.z, 0, t));
+        hero.position.set(
+          lerp(centerStart.x, 0, t),
+          lerp(centerStart.y, HERO_STAND_Y, t),
+          lerp(centerStart.z, 0, t)
+        );
       },
       easeOutCubic
     );
@@ -500,12 +482,12 @@ export default function IslandScene({ onSceneReady = null }) {
     await animateValue(
       500,
       (t) => {
-        hero.position.y = 0.5 + Math.sin(Math.PI * t) * 1.5;
+        hero.position.y = HERO_STAND_Y + Math.sin(Math.PI * t) * 0.9;
       },
       easeInOutSine
     );
 
-    hero.position.y = 0.5;
+    hero.position.y = HERO_STAND_Y;
     triggerFlash(110, 0.9);
     soundManager.playVictory();
     useGameStore.getState().announceHUD({ type: 'payday', headline: 'PAYDAY COMPLETE!' });
@@ -575,14 +557,14 @@ export default function IslandScene({ onSceneReady = null }) {
     const initialIslandStage = useGameStore.getState().islandStage;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(SCENE_BACKGROUND);
+    scene.background = new THREE.Color('#1a3a2a');
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 120);
-    const initialDistance = getCameraDistanceForStage(initialIslandStage);
+    const initialDistance = 10;
     const initialAxis = initialDistance / Math.sqrt(3);
-    camera.position.set(initialAxis, initialAxis, initialAxis);
-    camera.lookAt(0, 0.4, 0);
+    camera.position.set(initialAxis * 1.05, initialAxis, initialAxis * 0.95);
+    camera.lookAt(0, VOXEL_HALF, 0);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({
@@ -614,22 +596,24 @@ export default function IslandScene({ onSceneReady = null }) {
     resize();
     onSceneReady?.({ renderer, scene, camera, controls: null });
 
-    const ambientLight = new THREE.AmbientLight(0xf0ffe0, 0.75);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
-    directionalLight.position.set(8, 12, 6);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    directionalLight.position.set(8, 12, 4);
     directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.set(2048, 2048);
+    directionalLight.shadow.mapSize.set(1024, 1024);
     directionalLight.shadow.camera.near = 0.5;
     directionalLight.shadow.camera.far = 40;
-    directionalLight.shadow.camera.left = -12;
-    directionalLight.shadow.camera.right = 12;
-    directionalLight.shadow.camera.top = 12;
-    directionalLight.shadow.camera.bottom = -12;
+    directionalLight.shadow.camera.left = -15;
+    directionalLight.shadow.camera.right = 15;
+    directionalLight.shadow.camera.top = 15;
+    directionalLight.shadow.camera.bottom = -15;
     scene.add(directionalLight);
+    const hemisphereLight = new THREE.HemisphereLight(0x87ceeb, 0x4a7c4f, 0.3);
+    scene.add(hemisphereLight);
 
-    buildIsland(scene);
+    buildGroundPlatform(scene);
     addWater(scene);
     ensureKingdomFlag(useBudgetStore.getState().bannerColor);
 
@@ -656,13 +640,13 @@ export default function IslandScene({ onSceneReady = null }) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.target.set(0, 0.4, 0);
-    controls.minDistance = Math.max(8, initialDistance - 3.5);
-    controls.maxDistance = initialDistance + 3.5;
-    controls.minPolarAngle = Math.PI / 4 - 0.1;
-    controls.maxPolarAngle = Math.PI / 4 + 0.2;
-    controls.minAzimuthAngle = Math.PI / 4 - 0.45;
-    controls.maxAzimuthAngle = Math.PI / 4 + 0.45;
+    controls.target.set(0, VOXEL_HALF, 0);
+    controls.minDistance = 4;
+    controls.maxDistance = 20;
+    controls.minPolarAngle = 0;
+    controls.maxPolarAngle = Math.PI;
+    controls.minAzimuthAngle = -Infinity;
+    controls.maxAzimuthAngle = Infinity;
     controls.enablePan = false;
     controls.touches = {
       ONE: THREE.TOUCH.ROTATE,
@@ -670,7 +654,7 @@ export default function IslandScene({ onSceneReady = null }) {
     };
     controls.update();
     controlsRef.current = controls;
-    updateCameraForStage(initialIslandStage, true);
+    updateCameraForStage();
     onSceneReady?.({ renderer, scene, camera, controls });
 
     let previous = performance.now();
@@ -689,7 +673,11 @@ export default function IslandScene({ onSceneReady = null }) {
       updateFlash(now);
 
       if (islandGrowthGroupRef.current) {
-        updateIslandGrowthAnimations(islandGrowthGroupRef.current, now, deltaMs / 1000);
+        updateIslandGrowthAnimations(islandGrowthGroupRef.current, now);
+      }
+
+      if (dynamicBudgetGroupRef.current) {
+        updateDynamicEntityAnimations(dynamicBudgetGroupRef.current, now);
       }
 
       if (frameTimer >= FRAME_MS) {
@@ -829,7 +817,7 @@ export default function IslandScene({ onSceneReady = null }) {
       soundManager.playIslandGrow();
     }
 
-    updateCameraForStage(islandStage);
+    updateCameraForStage();
   }, [islandStage]);
 
   useEffect(() => {

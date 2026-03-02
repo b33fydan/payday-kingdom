@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
+export const VOXEL_SIZE = 0.4;
+export const VOXEL_HALF = 0.2;
+
 export const COLORS = {
   grassDark: '#2f7d32',
   grassBase: '#3a913f',
@@ -27,6 +30,7 @@ export const COLORS = {
   monsterPhone: '#7c59cf',
   monsterTransport: '#db8739',
   monsterFood: '#4ea85a',
+  monsterHealth: '#7ddf96',
   monsterEntertainment: '#4b83d7',
   monsterOther: '#8c96a3',
   monsterSlime: '#65d16f',
@@ -47,12 +51,29 @@ export const BILL_CATEGORY_COLORS = {
   phone: COLORS.monsterPhone,
   transport: COLORS.monsterTransport,
   food: COLORS.monsterFood,
+  health: COLORS.monsterHealth,
   entertainment: COLORS.monsterEntertainment,
   other: COLORS.monsterTransport
 };
 
+const LEAF_SHADES = [COLORS.leafDark, COLORS.leafBase, COLORS.leafLight];
+
+function pickLeafShade() {
+  return LEAF_SHADES[Math.floor(Math.random() * LEAF_SHADES.length)];
+}
+
+function addLocalVoxel(group, x, y, z, color, size = 1, scale = null) {
+  const voxel = createVoxel(x, y, z, color, size);
+  if (Array.isArray(scale) && scale.length === 3) {
+    voxel.scale.set(scale[0], scale[1], scale[2]);
+  }
+  group.add(voxel);
+  return voxel;
+}
+
 export function createVoxel(x, y, z, color, size = 1) {
-  const geometry = new THREE.BoxGeometry(size, size, size);
+  const cubeSize = Math.max(0.02, VOXEL_SIZE * size);
+  const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
   const material = new THREE.MeshStandardMaterial({ color });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(x, y, z);
@@ -61,29 +82,151 @@ export function createVoxel(x, y, z, color, size = 1) {
   return mesh;
 }
 
-export function createTree(x, z, style = 'oak') {
+export function createGroundVoxel(x, y, z, color, size = 1) {
+  const geometry = new THREE.BoxGeometry(VOXEL_SIZE * size, VOXEL_HALF, VOXEL_SIZE * size);
+  const material = new THREE.MeshStandardMaterial({ color });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+function createPineTree() {
   const tree = new THREE.Group();
-  const trunkHeight = style === 'pine' ? 1.8 : 1.4;
-  const trunk = createVoxel(x, trunkHeight * 0.5, z, COLORS.woodBase, 0.6);
-  trunk.scale.y = trunkHeight;
-  trunk.position.y = trunkHeight * 0.5;
 
-  const leafColor = style === 'autumn' ? '#a36b2f' : COLORS.leafBase;
-  const leaves = [];
-
-  if (style === 'pine') {
-    leaves.push(createVoxel(x, trunkHeight + 0.7, z, COLORS.leafDark, 1.3));
-    leaves.push(createVoxel(x, trunkHeight + 1.3, z, COLORS.leafBase, 1));
-    leaves.push(createVoxel(x, trunkHeight + 1.8, z, COLORS.leafLight, 0.7));
-  } else {
-    leaves.push(createVoxel(x, trunkHeight + 0.6, z, leafColor, 1.3));
-    leaves.push(createVoxel(x + 0.55, trunkHeight + 0.45, z, COLORS.leafLight, 0.9));
-    leaves.push(createVoxel(x - 0.55, trunkHeight + 0.45, z, COLORS.leafDark, 0.9));
-    leaves.push(createVoxel(x, trunkHeight + 0.45, z + 0.55, COLORS.leafBase, 0.9));
-    leaves.push(createVoxel(x, trunkHeight + 0.45, z - 0.55, COLORS.leafBase, 0.9));
+  for (let index = 0; index < 4; index += 1) {
+    addLocalVoxel(tree, 0, VOXEL_HALF + index * VOXEL_SIZE, 0, COLORS.woodBase, 1, [0.5, 1, 0.5]);
   }
 
-  tree.add(trunk, ...leaves);
+  const baseLayerY = VOXEL_HALF + VOXEL_SIZE * 3;
+  const baseSlots = [];
+  for (let gx = -1; gx <= 1; gx += 1) {
+    for (let gz = -1; gz <= 1; gz += 1) {
+      baseSlots.push([gx, gz]);
+    }
+  }
+
+  const removed = new Set();
+  while (removed.size < 3) {
+    removed.add(Math.floor(Math.random() * baseSlots.length));
+  }
+
+  baseSlots.forEach(([gx, gz], slotIndex) => {
+    if (!removed.has(slotIndex) || (gx === 0 && gz === 0)) {
+      addLocalVoxel(tree, gx * VOXEL_SIZE, baseLayerY, gz * VOXEL_SIZE, pickLeafShade());
+    }
+  });
+
+  [
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [-0.5, 0.5],
+    [0.5, 0.5],
+    [0, 0]
+  ].forEach(([gx, gz], index) => {
+    if (index !== 4 || Math.random() > 0.2) {
+      addLocalVoxel(tree, gx * VOXEL_SIZE, baseLayerY + VOXEL_SIZE, gz * VOXEL_SIZE, pickLeafShade());
+    }
+  });
+
+  addLocalVoxel(tree, 0, baseLayerY + VOXEL_SIZE * 2, 0, pickLeafShade());
+  addLocalVoxel(tree, 0, baseLayerY + VOXEL_SIZE * 2.75, 0, COLORS.leafLight, 0.8);
+
+  return tree;
+}
+
+function createOakTree() {
+  const tree = new THREE.Group();
+
+  for (let index = 0; index < 3; index += 1) {
+    addLocalVoxel(tree, 0, VOXEL_HALF + index * VOXEL_SIZE, 0, COLORS.woodLight, 1, [0.75, 1, 0.75]);
+  }
+
+  const canopyCenterY = VOXEL_HALF + VOXEL_SIZE * 3;
+  const canopyOffsets = [
+    [0, 0, 0],
+    [1, 0, 0],
+    [-1, 0, 0],
+    [0, 0, 1],
+    [0, 0, -1],
+    [1, 1, 0],
+    [-1, 1, 0],
+    [0, 1, 1],
+    [0, 1, -1],
+    [1, 0, 1],
+    [-1, 0, -1],
+    [1, 0, -1],
+    [-1, 0, 1],
+    [0, 2, 0],
+    [0, -1, 0]
+  ];
+
+  const holeCount = 3 + Math.floor(Math.random() * 2);
+  const skipped = new Set();
+  while (skipped.size < holeCount) {
+    skipped.add(Math.floor(Math.random() * canopyOffsets.length));
+  }
+
+  canopyOffsets.forEach(([ox, oy, oz], index) => {
+    if (!skipped.has(index)) {
+      addLocalVoxel(tree, ox * VOXEL_SIZE * 0.8, canopyCenterY + oy * VOXEL_SIZE * 0.8, oz * VOXEL_SIZE * 0.8, pickLeafShade());
+    }
+  });
+
+  return tree;
+}
+
+function createBushCluster() {
+  const bush = new THREE.Group();
+  const offsets = [
+    [0, VOXEL_HALF, 0],
+    [VOXEL_SIZE * 0.55, VOXEL_HALF, 0],
+    [-VOXEL_SIZE * 0.55, VOXEL_HALF, 0],
+    [0, VOXEL_HALF, VOXEL_SIZE * 0.55],
+    [0, VOXEL_HALF, -VOXEL_SIZE * 0.55]
+  ];
+
+  const count = 3 + Math.floor(Math.random() * 3);
+  for (let index = 0; index < count; index += 1) {
+    const [x, y, z] = offsets[index];
+    addLocalVoxel(bush, x, y, z, index % 2 === 0 ? COLORS.leafBase : COLORS.leafDark, 0.95);
+  }
+
+  return bush;
+}
+
+function createDeadTreeStyle() {
+  const tree = new THREE.Group();
+  const trunk = addLocalVoxel(tree, 0, VOXEL_HALF, 0, '#6b4f34', 1, [0.5, 1, 0.5]);
+  const trunkMid = addLocalVoxel(tree, 0.03, VOXEL_HALF + VOXEL_SIZE, 0, '#5b412a', 1, [0.5, 1, 0.5]);
+  const trunkTop = addLocalVoxel(tree, 0.06, VOXEL_HALF + VOXEL_SIZE * 2, 0.02, '#4f3723', 1, [0.45, 1, 0.45]);
+  trunk.rotation.z = 0.08;
+  trunkMid.rotation.z = 0.08;
+  trunkTop.rotation.z = 0.08;
+
+  const branchA = addLocalVoxel(tree, VOXEL_SIZE * 0.45, VOXEL_HALF + VOXEL_SIZE * 1.9, 0, '#705037', 0.75, [0.8, 0.55, 0.5]);
+  branchA.rotation.z = -0.35;
+  const branchB = addLocalVoxel(tree, -VOXEL_SIZE * 0.35, VOXEL_HALF + VOXEL_SIZE * 1.45, VOXEL_SIZE * 0.2, '#705037', 0.7, [0.8, 0.5, 0.5]);
+  branchB.rotation.z = 0.25;
+
+  return tree;
+}
+
+export function createTree(x, z, style = 'oak') {
+  let tree;
+
+  if (style === 'pine') {
+    tree = createPineTree();
+  } else if (style === 'bush') {
+    tree = createBushCluster();
+  } else if (style === 'dead') {
+    tree = createDeadTreeStyle();
+  } else {
+    tree = createOakTree();
+  }
+
+  tree.position.set(x, 0, z);
   return tree;
 }
 
@@ -95,8 +238,8 @@ export function createBuilding(x, z, width, height, depth, color = COLORS.stoneB
     const taper = 1 - level * 0.05;
     const levelWidth = Math.max(0.6, width * taper);
     const levelDepth = Math.max(0.6, depth * taper);
-    const levelGeo = new THREE.BoxGeometry(levelWidth, 1, levelDepth);
-    levelGeo.translate(0, level + 0.5, 0);
+    const levelGeo = new THREE.BoxGeometry(levelWidth * VOXEL_SIZE, VOXEL_SIZE, levelDepth * VOXEL_SIZE);
+    levelGeo.translate(0, (level + 0.5) * VOXEL_SIZE, 0);
     geos.push(levelGeo);
   }
 
@@ -115,46 +258,137 @@ export function createBuilding(x, z, width, height, depth, color = COLORS.stoneB
 
 export function createCharacter(x, z, armorColor = COLORS.heroArmor, hasShield = true) {
   const character = new THREE.Group();
-  const legs = createVoxel(x, 0.5, z, '#3f2b1a', 0.6);
-  const torso = createVoxel(x, 1.2, z, armorColor, 0.8);
-  const shoulders = createVoxel(x, 1.9, z, COLORS.heroTrim, 0.9);
-  const head = createVoxel(x, 2.55, z, COLORS.heroSkin, 0.6);
+  const legs = createVoxel(x, 0.28, z, '#3f2b1a', 0.8);
+  const torso = createVoxel(x, 0.72, z, armorColor, 1);
+  const shoulders = createVoxel(x, 1.08, z, COLORS.heroTrim, 1.1);
+  const head = createVoxel(x, 1.44, z, COLORS.heroSkin, 0.8);
 
   character.add(legs, torso, shoulders, head);
 
   if (hasShield) {
-    const shield = createVoxel(x + 0.7, 1.25, z, COLORS.shieldWood, 0.6);
-    const shieldRim = createVoxel(x + 0.7, 1.25, z + 0.02, COLORS.shieldMetal, 0.42);
+    const shield = createVoxel(x + 0.36, 0.76, z, COLORS.shieldWood, 0.75);
+    const shieldRim = createVoxel(x + 0.36, 0.76, z + 0.02, COLORS.shieldMetal, 0.5);
     character.add(shield, shieldRim);
   }
 
   return character;
 }
 
-export function createMonster(x, z, color = COLORS.monsterGoblin, size = 1) {
+export function createMonster(x, z, color = COLORS.monsterGoblin, size = 1, category = 'other') {
   const monster = new THREE.Group();
-  const base = createVoxel(x, 0.4 * size, z, color, 0.9 * size);
-  const torso = createVoxel(x, 1.05 * size, z, color, 1.1 * size);
-  const shoulderLeft = createVoxel(x - 0.55 * size, 1.2 * size, z, color, 0.6 * size);
-  const shoulderRight = createVoxel(x + 0.55 * size, 1.2 * size, z, color, 0.6 * size);
-  const head = createVoxel(x, 1.8 * size, z, COLORS.monsterShadow, 0.55 * size);
+  const unit = VOXEL_SIZE * Math.max(0.35, size);
+  const bodyColor = new THREE.Color(color);
+  const headColor = bodyColor.clone().multiplyScalar(0.9);
 
-  monster.add(base, torso, shoulderLeft, shoulderRight, head);
+  const addMonsterVoxel = (ux, uy, uz, voxelColor, voxelSize = 1, scale = null) => {
+    const voxel = createVoxel(ux * unit, uy * unit, uz * unit, voxelColor, voxelSize * Math.max(0.35, size));
+    if (Array.isArray(scale) && scale.length === 3) {
+      voxel.scale.set(scale[0], scale[1], scale[2]);
+    }
+    monster.add(voxel);
+    return voxel;
+  };
+
+  for (let ix = 0; ix < 2; ix += 1) {
+    for (let iy = 0; iy < 2; iy += 1) {
+      for (let iz = 0; iz < 2; iz += 1) {
+        addMonsterVoxel(ix - 0.5, iy + 0.5, iz - 0.5, bodyColor);
+      }
+    }
+  }
+
+  if (category === 'housing') {
+    for (let iy = 0; iy < 2; iy += 1) {
+      for (let iz = 0; iz < 2; iz += 1) {
+        addMonsterVoxel(-1.5, iy + 0.5, iz - 0.5, bodyColor);
+      }
+    }
+  }
+
+  for (let ix = 0; ix < 2; ix += 1) {
+    for (let iy = 0; iy < 2; iy += 1) {
+      for (let iz = 0; iz < 2; iz += 1) {
+        if (category === 'food' && ix === 0 && iy === 0 && iz === 1) {
+          continue;
+        }
+
+        addMonsterVoxel((ix - 0.5) * 0.75, 2.15 + iy * 0.75, (iz - 0.5) * 0.75, headColor, 0.75);
+      }
+    }
+  }
+
+  addMonsterVoxel(-0.22, 2.55, 0.95, '#f8fafc', 0.25);
+  addMonsterVoxel(0.22, 2.55, 0.95, '#f8fafc', 0.25);
+
+  if (category === 'utilities') {
+    const orbiters = [];
+    const orbiterCount = 3 + Math.floor(Math.random() * 2);
+    for (let index = 0; index < orbiterCount; index += 1) {
+      const angle = (index / orbiterCount) * Math.PI * 2;
+      const orbiter = addMonsterVoxel(Math.cos(angle) * 1.6, 3.1, Math.sin(angle) * 1.6, '#facc15', 0.25);
+      orbiter.userData.orbitAngle = angle;
+      orbiter.userData.orbitRadius = 1.6 * unit;
+      orbiter.userData.orbitHeight = 3.1 * unit;
+      orbiters.push(orbiter);
+    }
+    monster.userData.orbiters = orbiters;
+  }
+
+  if (category === 'phone') {
+    for (let index = 0; index < 3; index += 1) {
+      addMonsterVoxel(0.85, 3.0 + index * 0.5, 0, COLORS.monsterPhone, 0.22);
+    }
+  }
+
+  if (category === 'transport') {
+    [
+      [-0.9, -0.2, -0.9],
+      [0.9, -0.2, -0.9],
+      [-0.9, -0.2, 0.9],
+      [0.9, -0.2, 0.9]
+    ].forEach(([lx, ly, lz]) => {
+      addMonsterVoxel(lx, ly, lz, bodyColor, 0.45, [0.9, 1.5, 0.9]);
+    });
+  }
+
+  if (category === 'entertainment') {
+    const left = addMonsterVoxel(-0.7, 3.35, 0, '#fca5a5', 0.55, [0.5, 1.2, 0.5]);
+    left.rotation.z = 0.5;
+    const right = addMonsterVoxel(0.7, 3.35, 0, '#93c5fd', 0.55, [0.5, 1.2, 0.5]);
+    right.rotation.z = -0.5;
+  }
+
+  if (category === 'health') {
+    monster.traverse((node) => {
+      if (node instanceof THREE.Mesh && node.material instanceof THREE.MeshStandardMaterial) {
+        node.material.color.lerp(new THREE.Color('#dcfce7'), 0.2);
+      }
+    });
+  }
+
+  monster.position.set(x, VOXEL_HALF, z);
+  monster.userData.type = 'monster';
+  monster.userData.baseY = monster.position.y;
+  monster.userData.idleBobAmplitude = 0.1;
+  monster.userData.idleBobSpeed = 1.6 + Math.random() * 0.7;
+  monster.userData.idleBobPhase = Math.random() * Math.PI * 2;
+
   return monster;
 }
 
 export function createRocks(x, z, count = 4) {
   const rocks = new THREE.Group();
 
-  for (let i = 0; i < count; i += 1) {
-    const size = 0.3 + Math.random() * 0.35;
+  for (let index = 0; index < count; index += 1) {
+    const size = 0.4 + Math.random() * 0.4;
     const rock = createVoxel(
-      x + (Math.random() - 0.5) * 1.2,
-      size * 0.5,
-      z + (Math.random() - 0.5) * 1.2,
-      i % 2 === 0 ? COLORS.stoneBase : COLORS.stoneDark,
+      x + (Math.random() - 0.5) * VOXEL_SIZE * 2.4,
+      VOXEL_HALF,
+      z + (Math.random() - 0.5) * VOXEL_SIZE * 2.4,
+      index % 2 === 0 ? COLORS.stoneBase : COLORS.stoneDark,
       size
     );
+    rock.scale.set(1, 0.8 + Math.random() * 0.5, 1);
     rock.rotation.y = Math.random() * Math.PI;
     rocks.add(rock);
   }

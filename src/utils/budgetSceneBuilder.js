@@ -1,39 +1,587 @@
 import * as THREE from 'three';
-import { BILL_CATEGORY_COLORS, COLORS, createBuilding, createMonster, createTree, createVoxel } from './voxelBuilder.js';
+import {
+  BILL_CATEGORY_COLORS,
+  COLORS,
+  VOXEL_HALF,
+  VOXEL_SIZE,
+  createGroundVoxel,
+  createMonster,
+  createTree,
+  createVoxel
+} from './voxelBuilder.js';
 
 const GROWTH_ANIMATION_MS = 500;
+const GROUND_GRID_SIZE = 20;
+const GROUND_HALF_SPAN = (GROUND_GRID_SIZE * VOXEL_SIZE) / 2;
+const GRASS_VARIANTS = [COLORS.grassDark, COLORS.grassBase, COLORS.grassLight, COLORS.grassMoss];
+const FLOWER_COLORS = ['#ef4444', '#fbbf24', '#ec4899', '#ffffff'];
+const ROCK_COLORS = ['#9ca3af', '#6b7280'];
+
+function worldFromGrid(index) {
+  return -GROUND_HALF_SPAN + VOXEL_HALF + index * VOXEL_SIZE;
+}
+
+function isEdgeIndex(ix, iz) {
+  return ix === 0 || iz === 0 || ix === GROUND_GRID_SIZE - 1 || iz === GROUND_GRID_SIZE - 1;
+}
+
+function randomBetween(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function addGridVoxel(group, gx, gy, gz, color, size = 1, scale = null) {
+  const voxel = createVoxel(gx * VOXEL_SIZE, VOXEL_HALF + gy * VOXEL_SIZE, gz * VOXEL_SIZE, color, size);
+  if (Array.isArray(scale) && scale.length === 3) {
+    voxel.scale.set(scale[0], scale[1], scale[2]);
+  }
+  group.add(voxel);
+  return voxel;
+}
+
+function addGridPlate(group, gx, gy, gz, color, scale = [1, 0.5, 1]) {
+  const plate = createVoxel(gx * VOXEL_SIZE, gy, gz * VOXEL_SIZE, color, 1);
+  plate.scale.set(scale[0], scale[1], scale[2]);
+  group.add(plate);
+  return plate;
+}
+
+function createRockClusters(clusterCount = 4) {
+  const rocks = new THREE.Group();
+
+  for (let clusterIndex = 0; clusterIndex < clusterCount; clusterIndex += 1) {
+    const edge = Math.floor(Math.random() * 4);
+    const edgeDistance = randomBetween(2.9, 3.7);
+    const tangent = randomBetween(-2.6, 2.6);
+
+    let cx = tangent;
+    let cz = tangent;
+
+    if (edge === 0) {
+      cx = edgeDistance;
+      cz = tangent;
+    } else if (edge === 1) {
+      cx = -edgeDistance;
+      cz = tangent;
+    } else if (edge === 2) {
+      cx = tangent;
+      cz = edgeDistance;
+    } else {
+      cx = tangent;
+      cz = -edgeDistance;
+    }
+
+    const rockPieces = 2 + Math.floor(Math.random() * 2);
+    for (let piece = 0; piece < rockPieces; piece += 1) {
+      const rock = createVoxel(
+        cx + randomBetween(-0.18, 0.18),
+        randomBetween(0.11, 0.2),
+        cz + randomBetween(-0.18, 0.18),
+        ROCK_COLORS[Math.floor(Math.random() * ROCK_COLORS.length)],
+        0.5 + Math.random() * 0.15
+      );
+      rock.scale.set(1, 0.7 + Math.random() * 0.35, 1);
+      rocks.add(rock);
+    }
+  }
+
+  return rocks;
+}
+
+function createFlowerScatter(count = 10) {
+  const flowers = new THREE.Group();
+  const blockedZones = [
+    { x: 2.2, z: -1.2, r: 1.5 },
+    { x: 1.8, z: -0.4, r: 1.7 },
+    { x: 2.5, z: 1.8, r: 1.8 }
+  ];
+
+  let placed = 0;
+  let attempts = 0;
+
+  while (placed < count && attempts < count * 25) {
+    attempts += 1;
+    const x = randomBetween(-3.2, 3.2);
+    const z = randomBetween(-3.2, 3.2);
+
+    if (Math.abs(x) > 3.5 || Math.abs(z) > 3.5) {
+      continue;
+    }
+
+    const blocked = blockedZones.some((zone) => {
+      const dx = x - zone.x;
+      const dz = z - zone.z;
+      return Math.sqrt(dx * dx + dz * dz) < zone.r;
+    });
+
+    if (blocked) {
+      continue;
+    }
+
+    const flower = createVoxel(
+      x,
+      randomBetween(0.16, 0.24),
+      z,
+      FLOWER_COLORS[Math.floor(Math.random() * FLOWER_COLORS.length)],
+      0.375
+    );
+
+    flowers.add(flower);
+    placed += 1;
+  }
+
+  return flowers;
+}
+
+function createCloudCluster(x, y, z) {
+  const cloud = new THREE.Group();
+  const cubeCount = 6 + Math.floor(Math.random() * 5);
+
+  for (let index = 0; index < cubeCount; index += 1) {
+    const t = cubeCount <= 1 ? 0 : index / (cubeCount - 1);
+    const offsetX = (t - 0.5) * 2.4 + randomBetween(-0.18, 0.18);
+    const offsetY = randomBetween(-0.18, 0.18);
+    const offsetZ = randomBetween(-0.42, 0.42);
+    cloud.add(createVoxel(offsetX, offsetY, offsetZ, '#f8fbff', 1.25));
+  }
+
+  cloud.position.set(x, y, z);
+  cloud.userData.cloudMotion = {
+    originX: x,
+    originY: y,
+    originZ: z,
+    amplitudeX: randomBetween(0.65, 1.15),
+    amplitudeZ: randomBetween(0.15, 0.35),
+    cycleSeconds: 20,
+    phase: Math.random() * Math.PI * 2
+  };
+
+  return cloud;
+}
+
+function createUndersideLayer(group, footprintScale, yStart, yEnd, color, edgeDropChance = 0.2) {
+  const min = -GROUND_HALF_SPAN * footprintScale;
+  const max = GROUND_HALF_SPAN * footprintScale;
+
+  for (let y = yStart; y >= yEnd; y -= VOXEL_HALF) {
+    for (let x = min; x <= max; x += VOXEL_SIZE) {
+      for (let z = min; z <= max; z += VOXEL_SIZE) {
+        const edgeDistance = Math.max(Math.abs(x), Math.abs(z));
+        const edgeThreshold = GROUND_HALF_SPAN * footprintScale - VOXEL_SIZE * 0.4;
+        if (edgeDistance > edgeThreshold && Math.random() < edgeDropChance) {
+          continue;
+        }
+
+        const voxel = createGroundVoxel(
+          x + randomBetween(-0.03, 0.03),
+          y + randomBetween(-0.04, 0.03),
+          z + randomBetween(-0.03, 0.03),
+          color
+        );
+        voxel.scale.set(0.92, 1, 0.92);
+        group.add(voxel);
+      }
+    }
+  }
+}
+
+function createFloatingUnderside() {
+  const underside = new THREE.Group();
+
+  createUndersideLayer(underside, 0.8, -0.2, -0.6, '#92400e', 0.12);
+  createUndersideLayer(underside, 0.5, -0.6, -1.2, '#6b7280', 0.2);
+  createUndersideLayer(underside, 0.2, -1.2, -1.8, '#4b5563', 0.32);
+
+  for (let index = 0; index < 6; index += 1) {
+    const spike = createVoxel(
+      randomBetween(-0.65, 0.65),
+      randomBetween(-1.55, -1.2),
+      randomBetween(-0.65, 0.65),
+      '#3f4853',
+      0.6
+    );
+    spike.scale.set(0.55, 1.6 + Math.random() * 1.2, 0.55);
+    underside.add(spike);
+  }
+
+  for (let index = 0; index < 2; index += 1) {
+    const vine = createVoxel(randomBetween(-0.8, 0.8), randomBetween(-1.2, -0.9), randomBetween(-0.8, 0.8), '#3f8b42', 0.35);
+    vine.scale.set(0.45, 1.8, 0.45);
+    underside.add(vine);
+  }
+
+  return underside;
+}
+
+function createHut(x, z) {
+  const hut = new THREE.Group();
+  const wallColor = '#d4a574';
+
+  for (let gy = 0; gy < 4; gy += 1) {
+    for (let gx = -2; gx <= 2; gx += 1) {
+      for (let gz = -2; gz <= 2; gz += 1) {
+        const isWall = gx === -2 || gx === 2 || gz === -2 || gz === 2;
+        if (!isWall) {
+          continue;
+        }
+
+        if (gz === 2 && gx === 0 && gy < 2) {
+          continue;
+        }
+
+        if (gx === 2 && gz === 0 && gy === 2) {
+          continue;
+        }
+
+        addGridVoxel(hut, gx, gy, gz, wallColor);
+      }
+    }
+  }
+
+  addGridVoxel(hut, 1, 2, 0, '#7dd3fc', 0.8);
+
+  for (let layer = 0; layer < 3; layer += 1) {
+    const half = 2 - layer;
+    const roofColor = layer === 0 ? '#5f3a1f' : layer === 1 ? '#4a2f1a' : '#3f2615';
+    const gy = 4 + layer;
+
+    for (let gx = -half; gx <= half; gx += 1) {
+      for (let gz = -half; gz <= half; gz += 1) {
+        addGridVoxel(hut, gx, gy, gz, roofColor);
+      }
+    }
+  }
+
+  hut.position.set(x, VOXEL_HALF, z);
+  return hut;
+}
+
+function createHouse(x, z) {
+  const house = new THREE.Group();
+
+  for (let gy = 0; gy < 5; gy += 1) {
+    for (let gx = -3; gx <= 3; gx += 1) {
+      for (let gz = -3; gz <= 3; gz += 1) {
+        const isWall = gx === -3 || gx === 3 || gz === -3 || gz === 3;
+        if (!isWall) {
+          continue;
+        }
+
+        if (gz === 3 && gx === 0 && gy < 2) {
+          continue;
+        }
+
+        if ((gx === -2 || gx === 2) && gz === 3 && (gy === 2 || gy === 3)) {
+          continue;
+        }
+
+        if ((gx === -3 || gx === 3) && gz === 0 && gy === 2) {
+          continue;
+        }
+
+        addGridVoxel(house, gx, gy, gz, '#c89f72');
+      }
+    }
+  }
+
+  addGridVoxel(house, -2, 2, 2, '#8ed1ff', 0.75);
+  addGridVoxel(house, 2, 2, 2, '#8ed1ff', 0.75);
+  addGridVoxel(house, -2.8, 2, 0, '#8ed1ff', 0.7);
+  addGridVoxel(house, 2.8, 2, 0, '#8ed1ff', 0.7);
+
+  for (let layer = 0; layer < 3; layer += 1) {
+    const half = 4 - layer;
+    const gy = 5 + layer;
+    const roofColor = layer === 0 ? '#5a2e1a' : layer === 1 ? '#6b3420' : '#7c3f29';
+
+    for (let gx = -half; gx <= half; gx += 1) {
+      for (let gz = -half; gz <= half; gz += 1) {
+        addGridVoxel(house, gx, gy, gz, roofColor);
+      }
+    }
+  }
+
+  for (let gx = 2; gx <= 3; gx += 1) {
+    for (let gz = -1; gz <= 0; gz += 1) {
+      for (let gy = 6; gy <= 8; gy += 1) {
+        addGridVoxel(house, gx, gy, gz, '#4b5563');
+      }
+    }
+  }
+
+  house.position.set(x, VOXEL_HALF, z);
+  return house;
+}
+
+function createTower(x, z, bannerColor = COLORS.gold) {
+  const tower = new THREE.Group();
+  const coords = [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5];
+
+  for (let gy = 0; gy < 8; gy += 1) {
+    coords.forEach((gx) => {
+      coords.forEach((gz) => {
+        const isWall = gx === -2.5 || gx === 2.5 || gz === -2.5 || gz === 2.5;
+        if (!isWall) {
+          return;
+        }
+
+        const isWindow = (gx === 2.5 && gz === 0.5 && (gy === 2 || gy === 3)) ||
+          (gz === -2.5 && gx === -0.5 && (gy === 4 || gy === 5));
+
+        if (!isWindow) {
+          addGridVoxel(tower, gx, gy, gz, '#9ca3af');
+        }
+      });
+    });
+  }
+
+  coords.forEach((gx, ix) => {
+    coords.forEach((gz, iz) => {
+      const isPerimeter = gx === -2.5 || gx === 2.5 || gz === -2.5 || gz === 2.5;
+      if (!isPerimeter) {
+        return;
+      }
+      if ((ix + iz) % 2 === 0) {
+        addGridVoxel(tower, gx, 8, gz, '#d1d5db');
+      }
+    });
+  });
+
+  for (let layer = 0; layer < 3; layer += 1) {
+    const half = 2 - layer;
+    for (let gx = -half; gx <= half; gx += 1) {
+      for (let gz = -half; gz <= half; gz += 1) {
+        addGridVoxel(tower, gx, 9 + layer, gz, layer === 2 ? '#7f1d1d' : '#8b5e3c');
+      }
+    }
+  }
+
+  for (let gy = 12; gy < 16; gy += 1) {
+    addGridVoxel(tower, 0.2, gy * 0.45, 0, '#374151', 0.35, [0.45, 1, 0.45]);
+  }
+
+  for (let gx = 1; gx <= 2; gx += 1) {
+    for (let gy = 13; gy <= 15; gy += 1) {
+      addGridVoxel(tower, gx * 0.55, gy * 0.45, 0, bannerColor, 0.45, [1, 0.9, 0.35]);
+    }
+  }
+
+  for (let index = 0; index < 3; index += 1) {
+    addGridVoxel(
+      tower,
+      randomBetween(-2.3, 2.3),
+      randomBetween(1.4, 6.2),
+      2.52,
+      ['#2f7d32', '#3ea542', '#52aa57'][Math.floor(Math.random() * 3)],
+      0.5
+    );
+  }
+
+  tower.position.set(x, VOXEL_HALF, z);
+  return tower;
+}
+
+function createCastle(x, z) {
+  const castle = new THREE.Group();
+  const mainCoords = [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5];
+
+  for (let gy = 0; gy < 10; gy += 1) {
+    mainCoords.forEach((gx) => {
+      mainCoords.forEach((gz) => {
+        const isWall = gx === -3.5 || gx === 3.5 || gz === -3.5 || gz === 3.5;
+        if (!isWall) {
+          return;
+        }
+
+        const isGate = gz === 3.5 && Math.abs(gx) <= 1.5 && gy < 4;
+        if (!isGate) {
+          addGridVoxel(castle, gx, gy, gz, '#9aa3b2');
+        }
+      });
+    });
+  }
+
+  const sideCoords = [-1.5, -0.5, 0.5, 1.5];
+  for (let gy = 0; gy < 7; gy += 1) {
+    sideCoords.forEach((gx) => {
+      sideCoords.forEach((gz) => {
+        const isWall = gx === -1.5 || gx === 1.5 || gz === -1.5 || gz === 1.5;
+        if (isWall) {
+          addGridVoxel(castle, gx + 6, gy, gz - 1, '#868e9c');
+        }
+      });
+    });
+  }
+
+  for (let gx = 2; gx <= 6; gx += 1) {
+    for (let gy = 0; gy < 3; gy += 1) {
+      addGridVoxel(castle, gx, gy, -1, '#7d8793');
+    }
+  }
+
+  addGridVoxel(castle, -2.4, 4.2, 3.8, '#f97316', 0.55);
+  addGridVoxel(castle, -2.1, 4.2, 3.95, '#facc15', 0.35);
+  addGridVoxel(castle, 2.4, 4.2, 3.8, '#f97316', 0.55);
+  addGridVoxel(castle, 2.1, 4.2, 3.95, '#facc15', 0.35);
+
+  for (let gx = -3.5; gx <= 3.5; gx += 1) {
+    if (Math.abs(gx) <= 1.5) {
+      continue;
+    }
+    addGridVoxel(castle, gx, 10, -3.5, '#cbd5e1');
+    addGridVoxel(castle, gx, 10, 3.5, '#cbd5e1');
+  }
+
+  castle.position.set(x, VOXEL_HALF, z);
+  return castle;
+}
+
+function buildStage0() {
+  return [
+    createTree(-2.85, -2.35, 'dead'),
+    createTree(-3.25, 0.7, 'dead'),
+    createRockClusters(4)
+  ];
+}
+
+function buildStage1() {
+  return [
+    createTree(-2.2, 2.6, 'pine'),
+    createTree(2.6, 2.25, 'oak'),
+    createTree(-1.15, 3.1, 'pine'),
+    createTree(1.8, 2.9, 'bush'),
+    createFlowerScatter(10)
+  ];
+}
+
+function buildStage2() {
+  return [
+    createHut(2.2, -1.15),
+    createTree(-0.65, 2.95, 'oak'),
+    createTree(3.0, 0.2, 'pine')
+  ];
+}
+
+function buildStage3() {
+  return [
+    createHouse(2.2, -1.1),
+    createTree(-1.25, 1.75, 'oak'),
+    createTree(0.55, 2.35, 'bush')
+  ];
+}
+
+function buildStage4() {
+  return [
+    createTree(-2.7, 2.95, 'pine'),
+    createTree(-2.05, 2.55, 'oak'),
+    createTree(1.2, 2.95, 'oak')
+  ];
+}
+
+function buildStage5() {
+  return [
+    createTower(2.45, -1.15),
+    createCloudCluster(-2.8, 6.4, -0.7),
+    createCloudCluster(0.35, 7.1, 2.15),
+    createCloudCluster(2.8, 6.7, -2.0)
+  ];
+}
+
+function buildStage6() {
+  return [
+    createCastle(1.6, -0.55),
+    createTree(-2.85, 2.8, 'pine'),
+    createTree(-2.35, 2.35, 'oak'),
+    createTree(-1.8, 2.95, 'oak')
+  ];
+}
+
+const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2, buildStage3, buildStage4, buildStage5, buildStage6];
+
+export function buildGroundPlatform(parent) {
+  const terrain = new THREE.Group();
+  terrain.userData.type = 'terrain-base';
+
+  const tileGeometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_HALF, VOXEL_SIZE);
+  const tileMaterial = new THREE.MeshStandardMaterial({
+    roughness: 0.95,
+    metalness: 0.03,
+    vertexColors: true
+  });
+
+  const count = GROUND_GRID_SIZE * GROUND_GRID_SIZE;
+  const topTiles = new THREE.InstancedMesh(tileGeometry, tileMaterial, count);
+  topTiles.castShadow = true;
+  topTiles.receiveShadow = true;
+
+  const matrixHelper = new THREE.Object3D();
+  let index = 0;
+
+  for (let ix = 0; ix < GROUND_GRID_SIZE; ix += 1) {
+    for (let iz = 0; iz < GROUND_GRID_SIZE; iz += 1) {
+      const x = worldFromGrid(ix);
+      const z = worldFromGrid(iz);
+      const jitterY = Math.random() * 0.08;
+
+      matrixHelper.position.set(x, jitterY, z);
+      matrixHelper.rotation.set(0, randomBetween(-0.03, 0.03), 0);
+      matrixHelper.scale.set(1, 1, 1);
+      matrixHelper.updateMatrix();
+
+      topTiles.setMatrixAt(index, matrixHelper.matrix);
+      topTiles.setColorAt(index, new THREE.Color(GRASS_VARIANTS[Math.floor(Math.random() * GRASS_VARIANTS.length)]));
+      index += 1;
+
+      if (isEdgeIndex(ix, iz)) {
+        terrain.add(createGroundVoxel(x, -0.2, z, '#4b7335'));
+        terrain.add(createGroundVoxel(x, -0.4, z, '#92400e'));
+        terrain.add(createGroundVoxel(x, -0.6, z, '#6b7280'));
+      }
+    }
+  }
+
+  topTiles.instanceMatrix.needsUpdate = true;
+  if (topTiles.instanceColor) {
+    topTiles.instanceColor.needsUpdate = true;
+  }
+
+  terrain.add(topTiles);
+  terrain.add(createFloatingUnderside());
+
+  if (parent) {
+    parent.add(terrain);
+  }
+
+  return terrain;
+}
 
 export function getMonsterScale(amount) {
   if (amount < 100) {
+    return 0.5;
+  }
+
+  if (amount < 500) {
     return 0.7;
   }
 
-  if (amount <= 500) {
-    return 1;
-  }
-
-  return 1.3;
+  return 1;
 }
 
 export function getIncomeScale(income) {
-  const normalized = 0.5 + ((income - 1000) * 1.5) / 4000;
-  return Math.min(2, Math.max(0.3, normalized));
+  const normalized = 0.35 + ((income - 1000) * 1.1) / 4000;
+  return Math.min(1.35, Math.max(0.28, normalized));
 }
 
 export function disposeObject3D(object) {
   object.traverse((node) => {
-    if (!(node instanceof THREE.Mesh)) {
-      return;
+    if (node instanceof THREE.Mesh || node instanceof THREE.InstancedMesh) {
+      node.geometry?.dispose();
+
+      if (Array.isArray(node.material)) {
+        node.material.forEach((material) => material?.dispose?.());
+      } else {
+        node.material?.dispose?.();
+      }
     }
-
-    node.geometry?.dispose();
-
-    if (Array.isArray(node.material)) {
-      node.material.forEach((material) => material.dispose());
-      return;
-    }
-
-    node.material?.dispose();
   });
 }
 
@@ -49,7 +597,7 @@ function easeOutCubic(t) {
   return 1 - (1 - t) ** 3;
 }
 
-function markGrowthObject(object, options = {}) {
+function markGrowthObject(object) {
   object.scale.setScalar(0.001);
   object.userData.growthAnimation = {
     start: performance.now(),
@@ -57,489 +605,49 @@ function markGrowthObject(object, options = {}) {
     complete: false
   };
 
-  if (options.cloudMotion) {
-    object.userData.cloudMotion = {
-      originX: object.position.x,
-      originY: object.position.y,
-      originZ: object.position.z,
-      amplitudeX: options.cloudMotion.amplitudeX,
-      amplitudeZ: options.cloudMotion.amplitudeZ,
-      speed: options.cloudMotion.speed,
-      phase: Math.random() * Math.PI * 2
-    };
-  }
-
   return object;
 }
 
-function createFlower(x, z, petalColor) {
-  const flower = new THREE.Group();
-  const stem = createVoxel(0, 0.25, 0, '#3f8b42', 0.16);
-  stem.scale.y = 2.2;
-
-  flower.add(stem);
-  flower.add(createVoxel(0, 0.62, 0, petalColor, 0.2));
-  flower.position.set(x, 0.5, z);
-  return flower;
-}
-
-function createDeadTree(x, z) {
-  const deadTree = new THREE.Group();
-  const trunk = createVoxel(0, 0.8, 0, '#6a6a6a', 0.4);
-  trunk.scale.y = 2.8;
-  const branchA = createVoxel(0.28, 1.7, 0, '#7f7f7f', 0.22);
-  branchA.rotation.z = Math.PI * 0.22;
-  const branchB = createVoxel(-0.22, 1.45, 0.08, '#777777', 0.2);
-  branchB.rotation.z = -Math.PI * 0.3;
-
-  deadTree.add(trunk, branchA, branchB);
-  deadTree.position.set(x, 0.45, z);
-  return deadTree;
-}
-
-function createHut(x, z) {
-  const hut = new THREE.Group();
-  const body = createBuilding(0, 0, 2.2, 2, 2.2, COLORS.woodBase);
-  const roof = createVoxel(0, 2.25, 0, COLORS.woodDark, 2.25);
-  roof.scale.y = 0.5;
-  const door = createVoxel(0, 0.85, 1.05, COLORS.woodDark, 0.6);
-  door.scale.y = 1.2;
-
-  hut.add(body, roof, door);
-  hut.position.set(x, 0.5, z);
-  return hut;
-}
-
-function createHouseUpgrade(x, z) {
-  const house = new THREE.Group();
-  const lower = createBuilding(0, 0, 3, 2, 2.8, COLORS.woodLight);
-  const upper = createBuilding(0, 0, 2.4, 2, 2.2, COLORS.stoneLight);
-  upper.position.y = 1.9;
-
-  const roofLeft = createVoxel(-0.45, 4.15, 0, '#7f2a2a', 1.2);
-  roofLeft.scale.set(1, 0.5, 2.4);
-  roofLeft.rotation.z = Math.PI * 0.1;
-
-  const roofRight = createVoxel(0.45, 4.15, 0, '#8e3131', 1.2);
-  roofRight.scale.set(1, 0.5, 2.4);
-  roofRight.rotation.z = -Math.PI * 0.1;
-
-  house.add(lower, upper, roofLeft, roofRight);
-  house.position.set(x, 0.5, z);
-  return house;
-}
-
-function createWell(x, z) {
-  const well = new THREE.Group();
-
-  [-0.45, 0, 0.45].forEach((offset) => {
-    well.add(createVoxel(offset, 0.28, -0.45, COLORS.stoneBase, 0.35));
-    well.add(createVoxel(offset, 0.28, 0.45, COLORS.stoneBase, 0.35));
-    well.add(createVoxel(-0.45, 0.28, offset, COLORS.stoneBase, 0.35));
-    well.add(createVoxel(0.45, 0.28, offset, COLORS.stoneBase, 0.35));
-  });
-
-  const postLeft = createVoxel(-0.45, 1.15, -0.45, COLORS.woodBase, 0.2);
-  postLeft.scale.y = 3;
-  const postRight = createVoxel(0.45, 1.15, -0.45, COLORS.woodBase, 0.2);
-  postRight.scale.y = 3;
-  const roof = createVoxel(0, 2.15, -0.45, COLORS.woodDark, 1.2);
-  roof.scale.set(1.1, 0.4, 1.2);
-
-  const water = createVoxel(0, 0.18, 0, COLORS.waterShallow, 0.7);
-  water.scale.y = 0.25;
-
-  well.add(postLeft, postRight, roof, water);
-  well.position.set(x, 0.5, z);
-  return well;
-}
-
-function createGardenBed(x, z) {
-  const bed = new THREE.Group();
-  const soil = createVoxel(0, 0.05, 0, '#5f3f24', 0.9);
-  soil.scale.y = 0.3;
-  const cropA = createVoxel(-0.2, 0.35, 0.1, COLORS.leafBase, 0.25);
-  const cropB = createVoxel(0.2, 0.35, -0.1, COLORS.leafLight, 0.25);
-
-  bed.add(soil, cropA, cropB);
-  bed.position.set(x, 0.5, z);
-  return bed;
-}
-
-function createPond(x, z) {
-  const pond = new THREE.Group();
-  const rim = createVoxel(0, 0.06, 0, COLORS.stoneDark, 1.8);
-  rim.scale.y = 0.3;
-  const water = createVoxel(0, 0.01, 0, COLORS.waterBase, 1.5);
-  water.scale.y = 0.1;
-
-  pond.add(rim, water);
-  pond.position.set(x, 0.5, z);
-  return pond;
-}
-
-function createFenceSegment(x, z, rotation = 0) {
-  const fence = new THREE.Group();
-  for (let index = -1; index <= 1; index += 1) {
-    const post = createVoxel(index * 0.35, 0.4, 0, COLORS.woodBase, 0.16);
-    post.scale.y = 2.6;
-    fence.add(post);
-  }
-
-  const railA = createVoxel(0, 0.56, 0, COLORS.woodLight, 0.95);
-  railA.scale.set(1, 0.2, 0.3);
-  const railB = createVoxel(0, 0.9, 0, COLORS.woodLight, 0.95);
-  railB.scale.set(1, 0.2, 0.3);
-
-  fence.add(railA, railB);
-  fence.position.set(x, 0.5, z);
-  fence.rotation.y = rotation;
-  return fence;
-}
-
-function createStonePath(points) {
-  const path = new THREE.Group();
-  points.forEach(([x, z], index) => {
-    const stone = createVoxel(x, 0.54, z, index % 2 === 0 ? COLORS.stoneLight : COLORS.stoneBase, 0.45);
-    stone.scale.y = 0.18;
-    path.add(stone);
-  });
-  return path;
-}
-
-function createBridge(x, z) {
-  const bridge = new THREE.Group();
-  for (let index = -2; index <= 2; index += 1) {
-    const plank = createVoxel(index * 0.28, 0.18, 0, COLORS.woodLight, 0.25);
-    plank.scale.set(0.9, 0.3, 1.8);
-    bridge.add(plank);
-  }
-
-  const railLeft = createVoxel(0, 0.52, -0.7, COLORS.woodDark, 1.55);
-  railLeft.scale.set(1, 0.2, 0.15);
-  const railRight = createVoxel(0, 0.52, 0.7, COLORS.woodDark, 1.55);
-  railRight.scale.set(1, 0.2, 0.15);
-
-  bridge.add(railLeft, railRight);
-  bridge.position.set(x, 0.5, z);
-  bridge.rotation.y = Math.PI / 2;
-  return bridge;
-}
-
-function createCastleTower(x, z) {
-  const tower = new THREE.Group();
-  const base = createBuilding(0, 0, 2.5, 6, 2.5, COLORS.stoneBase);
-  const battlementOffsets = [
-    [-0.85, 6.2, -0.85],
-    [0, 6.2, -0.85],
-    [0.85, 6.2, -0.85],
-    [-0.85, 6.2, 0.85],
-    [0, 6.2, 0.85],
-    [0.85, 6.2, 0.85],
-    [-0.85, 6.2, 0],
-    [0.85, 6.2, 0]
-  ];
-
-  battlementOffsets.forEach(([bx, by, bz]) => {
-    tower.add(createVoxel(bx, by, bz, COLORS.stoneLight, 0.5));
-  });
-
-  tower.add(base);
-  tower.position.set(x, 0.5, z);
-  return tower;
-}
-
-function createFlag(x, z, poleHeight = 3.5, color = COLORS.gold) {
-  const flag = new THREE.Group();
-  const pole = createVoxel(0, poleHeight * 0.5, 0, COLORS.stoneDark, 0.12);
-  pole.scale.y = poleHeight;
-  const cloth = createVoxel(0.32, poleHeight - 0.25, 0, color, 0.28);
-  cloth.scale.set(1.6, 0.6, 0.2);
-  flag.add(pole, cloth);
-  flag.position.set(x, 0.5, z);
-  return flag;
-}
-
-function createWallSection(x, z, length = 2.4, rotation = 0) {
-  const wall = new THREE.Group();
-  const count = Math.max(2, Math.floor(length / 0.42));
-
-  for (let index = 0; index < count; index += 1) {
-    const offset = (index - (count - 1) / 2) * 0.42;
-    const block = createVoxel(offset, 0.55, 0, COLORS.stoneBase, 0.38);
-    block.scale.y = 2.4;
-    wall.add(block);
-  }
-
-  wall.position.set(x, 0.5, z);
-  wall.rotation.y = rotation;
-  return wall;
-}
-
-function createFountain(x, z) {
-  const fountain = new THREE.Group();
-  const basin = createVoxel(0, 0.2, 0, '#d9dee8', 1.4);
-  basin.scale.y = 0.4;
-  const pillar = createVoxel(0, 0.9, 0, '#e4e9f2', 0.45);
-  pillar.scale.y = 2.2;
-  const waterTop = createVoxel(0, 1.65, 0, COLORS.waterShallow, 0.35);
-  const waterPool = createVoxel(0, 0.28, 0, COLORS.waterBase, 1.05);
-  waterPool.scale.y = 0.16;
-
-  fountain.add(basin, pillar, waterTop, waterPool);
-  fountain.position.set(x, 0.5, z);
-  return fountain;
-}
-
-function createSmithy(x, z) {
-  const smithy = new THREE.Group();
-  const body = createBuilding(0, 0, 2, 2, 1.8, COLORS.stoneDark);
-  const roof = createVoxel(0, 2.2, 0, '#5a2e1a', 2.1);
-  roof.scale.y = 0.45;
-  const chimney = createVoxel(0.75, 2.75, -0.4, COLORS.stoneBase, 0.35);
-  chimney.scale.y = 1.4;
-
-  smithy.add(body, roof, chimney);
-  smithy.position.set(x, 0.5, z);
-  return smithy;
-}
-
-function createMarketStall(x, z, awningColor) {
-  const stall = new THREE.Group();
-  const base = createVoxel(0, 0.2, 0, COLORS.woodBase, 1.1);
-  base.scale.y = 0.4;
-
-  [-0.4, 0.4].forEach((px) => {
-    [-0.4, 0.4].forEach((pz) => {
-      const post = createVoxel(px, 0.62, pz, COLORS.woodDark, 0.12);
-      post.scale.y = 2.8;
-      stall.add(post);
-    });
-  });
-
-  const awning = createVoxel(0, 1.35, 0, awningColor, 1.25);
-  awning.scale.y = 0.22;
-
-  stall.add(base, awning);
-  stall.position.set(x, 0.5, z);
-  return stall;
-}
-
-function createCloud(x, y, z) {
-  const cloud = new THREE.Group();
-  cloud.add(createVoxel(-0.42, 0, 0, '#f5f7fb', 0.7));
-  cloud.add(createVoxel(0.16, 0.08, 0.08, '#ffffff', 0.82));
-  cloud.add(createVoxel(0.6, 0, -0.06, '#f0f4fa', 0.62));
-  cloud.position.set(x, y, z);
-  return cloud;
-}
-
-function buildStage0() {
-  return [createDeadTree(-2.9, -2.7)];
-}
-
-function buildStage1() {
-  const objects = [
-    createTree(-2.2, 2.7, 'pine'),
-    createTree(2.8, 2.35, 'pine'),
-    createTree(-3.1, 0.5, 'pine')
-  ];
-
-  const flowers = [
-    [-0.8, 2.3, '#facc15'],
-    [-0.3, 2.7, '#ec4899'],
-    [0.2, 2.35, '#ef4444'],
-    [2.4, 0.4, '#f59e0b'],
-    [1.8, -0.2, '#f43f5e'],
-    [-1.7, 1.1, '#fb7185']
-  ];
-
-  flowers.forEach(([x, z, color]) => {
-    objects.push(createFlower(x, z, color));
-  });
-
-  return objects;
-}
-
-function buildStage2() {
-  return [
-    createHut(2.15, -1.1),
-    createTree(-0.9, 3.05, 'oak'),
-    createTree(3.15, 0.2, 'oak'),
-    createStonePath([
-      [0, -0.2],
-      [0.45, -0.38],
-      [0.95, -0.56],
-      [1.45, -0.74],
-      [1.95, -0.9]
-    ])
-  ];
-}
-
-function buildStage3() {
-  const objects = [
-    createHouseUpgrade(2.15, -1.1),
-    createWell(-1.15, 1.2),
-    createGardenBed(-0.4, 2.05),
-    createGardenBed(0.25, 2.2),
-    createGardenBed(-1.0, 2.35)
-  ];
-
-  [
-    [-1.55, 2.85, '#fde047'],
-    [0.95, 2.7, '#f472b6'],
-    [1.6, 2.35, '#fb7185']
-  ].forEach(([x, z, color]) => {
-    objects.push(createFlower(x, z, color));
-  });
-
-  return objects;
-}
-
-function buildStage4() {
-  const objects = [
-    createBuilding(-2.25, -1.45, 2.6, 3, 2, COLORS.stoneDark),
-    createPond(2.6, 1.85),
-    createStonePath([
-      [-1.2, -1.0],
-      [-0.6, -0.95],
-      [0, -0.9],
-      [0.8, -0.95],
-      [1.45, -1.0],
-      [2.0, -1.05]
-    ])
-  ];
-
-  const fenceSegments = [
-    createFenceSegment(-3.2, -2.45, 0),
-    createFenceSegment(-1.7, -2.45, 0),
-    createFenceSegment(0, -2.45, 0),
-    createFenceSegment(1.7, -2.45, 0),
-    createFenceSegment(3.2, -2.45, 0),
-    createFenceSegment(-3.45, -1.1, Math.PI / 2),
-    createFenceSegment(-3.45, 0.45, Math.PI / 2),
-    createFenceSegment(-3.45, 2.0, Math.PI / 2)
-  ];
-
-  objects.push(...fenceSegments);
-  return objects;
-}
-
-function buildStage5() {
-  const objects = [
-    createCastleTower(2.2, -1.1),
-    createFlag(3.08, -1.95, 5.2, COLORS.gold),
-    createBridge(2.45, 1.25),
-    createGardenBed(-0.2, 2.55),
-    createGardenBed(0.55, 2.65),
-    createGardenBed(1.3, 2.5),
-    createWallSection(-2.7, -2.95, 2.2, 0),
-    createWallSection(-0.1, -2.95, 2.2, 0),
-    createWallSection(2.5, -2.95, 2.2, 0),
-    createWallSection(3.55, -0.65, 2.3, Math.PI / 2),
-    createWallSection(3.55, 1.7, 2.3, Math.PI / 2)
-  ];
-
-  return objects;
-}
-
-function buildStage6() {
-  const objects = [
-    createBuilding(1.55, -0.45, 3.2, 4, 3, COLORS.stoneBase),
-    createWallSection(-3.05, 3.15, 2.1, 0),
-    createWallSection(-0.45, 3.15, 2.1, 0),
-    createWallSection(2.15, 3.15, 2.1, 0),
-    createWallSection(-3.65, 0.9, 2.1, Math.PI / 2),
-    createWallSection(-3.65, -1.55, 2.1, Math.PI / 2),
-    createWallSection(3.65, -3.15, 1.8, 0),
-    createFountain(0.05, 0.55),
-    createSmithy(-1.95, -0.25),
-    createMarketStall(-0.85, -1.55, '#f97316'),
-    createMarketStall(-0.05, -1.55, '#facc15'),
-    createFlag(-2.2, -0.25, 3.8, '#fbbf24'),
-    createFlag(2.75, 2.85, 3.2, '#f59e0b')
-  ];
-
-  [
-    [-2.8, 2.9, 'pine'],
-    [-2.2, 2.55, 'pine'],
-    [-1.6, 2.9, 'oak'],
-    [-1.0, 2.55, 'oak']
-  ].forEach(([x, z, style]) => {
-    objects.push(createTree(x, z, style));
-  });
-
-  const gate = new THREE.Group();
-  gate.add(createWallSection(1.1, -3.2, 1.4, 0));
-  const archLeft = createVoxel(0.55, 1.05, -3.2, COLORS.stoneDark, 0.45);
-  archLeft.scale.y = 2.4;
-  const archRight = createVoxel(1.65, 1.05, -3.2, COLORS.stoneDark, 0.45);
-  archRight.scale.y = 2.4;
-  const archTop = createVoxel(1.1, 2.15, -3.2, COLORS.stoneLight, 1.35);
-  archTop.scale.y = 0.35;
-  gate.add(archLeft, archRight, archTop);
-  objects.push(gate);
-
-  const clouds = [
-    createCloud(-2.4, 6.8, -0.8),
-    createCloud(0.3, 7.2, 2.5),
-    createCloud(2.75, 6.5, -1.9)
-  ];
-
-  clouds.forEach((cloud) => {
-    objects.push(markGrowthObject(cloud, {
-      cloudMotion: {
-        amplitudeX: 0.35 + Math.random() * 0.25,
-        amplitudeZ: 0.2 + Math.random() * 0.15,
-        speed: 0.35 + Math.random() * 0.25
-      }
-    }));
-  });
-
-  return objects;
-}
-
-const STAGE_BUILDERS = [buildStage0, buildStage1, buildStage2, buildStage3, buildStage4, buildStage5, buildStage6];
-
 function createQuestionBlock() {
   const questionGroup = new THREE.Group();
-  const base = createVoxel(0, 0.5, 0, COLORS.stoneBase, 1);
+  const base = createVoxel(0, VOXEL_HALF, 0, COLORS.stoneBase, 1.2);
   const accent = COLORS.silver;
 
   const marks = [
-    createVoxel(-0.16, 0.87, 0.52, accent, 0.16),
-    createVoxel(0, 0.87, 0.52, accent, 0.16),
-    createVoxel(0.16, 0.71, 0.52, accent, 0.16),
-    createVoxel(0, 0.55, 0.52, accent, 0.16),
-    createVoxel(0, 0.24, 0.52, accent, 0.16)
+    createVoxel(-0.08, 0.35, 0.24, accent, 0.3),
+    createVoxel(0.04, 0.35, 0.24, accent, 0.3),
+    createVoxel(0.12, 0.23, 0.24, accent, 0.3),
+    createVoxel(0.04, 0.11, 0.24, accent, 0.3),
+    createVoxel(0.04, -0.03, 0.24, accent, 0.3)
   ];
 
   questionGroup.add(base, ...marks);
   questionGroup.userData.type = 'empty-state';
+  questionGroup.position.y = VOXEL_HALF;
   return questionGroup;
 }
 
 function createIncomePile(income) {
   const scale = getIncomeScale(income);
   const pile = new THREE.Group();
-  const baseSize = 0.4 * scale;
-  const topSize = 0.28 * scale;
+  const baseSize = 0.9 * scale;
+  const topSize = 0.65 * scale;
 
   const baseVoxels = [
-    createVoxel(-0.45 * scale, 0, -0.25 * scale, COLORS.gold, baseSize),
-    createVoxel(0, 0, -0.22 * scale, COLORS.goldLight, baseSize),
-    createVoxel(0.45 * scale, 0, -0.25 * scale, COLORS.gold, baseSize),
-    createVoxel(-0.24 * scale, 0, 0.23 * scale, COLORS.goldLight, baseSize),
-    createVoxel(0.24 * scale, 0, 0.23 * scale, COLORS.gold, baseSize)
+    createVoxel(-VOXEL_SIZE * 1.1 * scale, VOXEL_HALF, -VOXEL_SIZE * 0.6 * scale, COLORS.gold, baseSize),
+    createVoxel(0, VOXEL_HALF, -VOXEL_SIZE * 0.6 * scale, COLORS.goldLight, baseSize),
+    createVoxel(VOXEL_SIZE * 1.1 * scale, VOXEL_HALF, -VOXEL_SIZE * 0.6 * scale, COLORS.gold, baseSize),
+    createVoxel(-VOXEL_SIZE * 0.6 * scale, VOXEL_HALF, VOXEL_SIZE * 0.55 * scale, COLORS.goldLight, baseSize),
+    createVoxel(VOXEL_SIZE * 0.6 * scale, VOXEL_HALF, VOXEL_SIZE * 0.55 * scale, COLORS.gold, baseSize)
   ];
 
   const topVoxels = [
-    createVoxel(-0.12 * scale, 0.27 * scale, 0, COLORS.goldLight, topSize),
-    createVoxel(0.12 * scale, 0.24 * scale, -0.04 * scale, COLORS.gold, topSize)
+    createVoxel(-VOXEL_SIZE * 0.25 * scale, VOXEL_SIZE * 0.6 * scale, 0, COLORS.goldLight, topSize),
+    createVoxel(VOXEL_SIZE * 0.25 * scale, VOXEL_SIZE * 0.55 * scale, -VOXEL_SIZE * 0.1 * scale, COLORS.gold, topSize)
   ];
 
   pile.add(...baseVoxels, ...topVoxels);
-  pile.position.set(0, 0.5, 0);
+  pile.position.set(0, VOXEL_HALF, 0);
   pile.userData.type = 'income-pile';
   pile.userData.scale = Number(scale.toFixed(2));
 
@@ -552,25 +660,26 @@ export function buildDynamicEntities(group, bills, income, options = {}) {
   if (bills.length === 0) {
     group.add(createQuestionBlock());
   } else {
-    const baseRadius = bills.length > 8 ? 4.2 : bills.length > 4 ? 3.8 : 3.4;
-    const radius = Math.min(5.5, baseRadius + safeStage * 0.22);
-    const startAngle = Math.PI * 0.14;
-    const endAngle = Math.PI * 0.86;
-    const zOffset = Math.min(1.45, 0.9 + safeStage * 0.08);
+    const baseRadius = bills.length > 8 ? 3.7 : bills.length > 4 ? 3.35 : 3.05;
+    const radius = Math.min(4.8, baseRadius + safeStage * 0.12);
+    const startAngle = Math.PI * 0.15;
+    const endAngle = Math.PI * 0.85;
+    const zOffset = Math.min(1.15, 0.8 + safeStage * 0.08);
 
     bills.forEach((bill, index) => {
       const t = bills.length === 1 ? 0.5 : index / (bills.length - 1);
       const angle = startAngle + (endAngle - startAngle) * t;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius - zOffset;
-      const size = getMonsterScale(bill.amount);
-      const color = BILL_CATEGORY_COLORS[bill.category] ?? BILL_CATEGORY_COLORS.other;
-      const monster = createMonster(x, z, color, size);
+      const size = getMonsterScale(Number(bill.amount || 0));
+      const category = String(bill.category || 'other');
+      const color = BILL_CATEGORY_COLORS[category] ?? BILL_CATEGORY_COLORS.other;
+      const monster = createMonster(x, z, color, size, category);
 
       monster.userData.type = 'bill-monster';
       monster.userData.name = bill.name;
-      monster.userData.amount = bill.amount;
-      monster.userData.category = bill.category;
+      monster.userData.amount = Number(bill.amount || 0);
+      monster.userData.category = category;
       monster.userData.scale = size;
       monster.userData.color = color;
 
@@ -579,6 +688,34 @@ export function buildDynamicEntities(group, bills, income, options = {}) {
   }
 
   group.add(createIncomePile(income));
+}
+
+export function updateDynamicEntityAnimations(group, nowMs) {
+  const time = nowMs * 0.001;
+
+  group.children.forEach((child) => {
+    if (child.userData?.type !== 'bill-monster') {
+      return;
+    }
+
+    const bobAmplitude = child.userData?.idleBobAmplitude ?? 0.1;
+    const bobSpeed = child.userData?.idleBobSpeed ?? 1.8;
+    const bobPhase = child.userData?.idleBobPhase ?? 0;
+    const baseY = child.userData?.baseY ?? VOXEL_HALF;
+    child.position.y = baseY + Math.sin(time * bobSpeed + bobPhase) * bobAmplitude;
+
+    const orbiters = child.userData?.orbiters;
+    if (Array.isArray(orbiters) && orbiters.length > 0) {
+      orbiters.forEach((orbiter, index) => {
+        const orbitAngle = time * 1.4 + (orbiter.userData?.orbitAngle ?? index);
+        const orbitRadius = orbiter.userData?.orbitRadius ?? VOXEL_SIZE * 0.55;
+        const orbitHeight = orbiter.userData?.orbitHeight ?? VOXEL_SIZE * 1.2;
+        orbiter.position.x = Math.cos(orbitAngle) * orbitRadius;
+        orbiter.position.z = Math.sin(orbitAngle) * orbitRadius;
+        orbiter.position.y = orbitHeight + Math.sin(orbitAngle * 1.6) * VOXEL_SIZE * 0.08;
+      });
+    }
+  });
 }
 
 export function buildIslandStage(group, stage) {
@@ -612,7 +749,7 @@ export function buildIslandStage(group, stage) {
   return addedObjects;
 }
 
-export function updateIslandGrowthAnimations(group, nowMs, deltaSeconds) {
+export function updateIslandGrowthAnimations(group, nowMs) {
   group.traverse((object) => {
     const growthAnimation = object.userData?.growthAnimation;
     if (growthAnimation && !growthAnimation.complete) {
@@ -628,10 +765,10 @@ export function updateIslandGrowthAnimations(group, nowMs, deltaSeconds) {
 
     const cloudMotion = object.userData?.cloudMotion;
     if (cloudMotion) {
-      const time = nowMs * 0.001 * cloudMotion.speed + cloudMotion.phase;
-      object.position.x = cloudMotion.originX + Math.sin(time) * cloudMotion.amplitudeX;
-      object.position.z = cloudMotion.originZ + Math.cos(time * 0.85) * cloudMotion.amplitudeZ;
-      object.position.y = cloudMotion.originY + Math.sin(time * 0.7) * 0.12;
+      const base = (nowMs / 1000) * ((Math.PI * 2) / cloudMotion.cycleSeconds) + cloudMotion.phase;
+      object.position.x = cloudMotion.originX + Math.sin(base) * cloudMotion.amplitudeX;
+      object.position.z = cloudMotion.originZ + Math.cos(base * 0.9) * cloudMotion.amplitudeZ;
+      object.position.y = cloudMotion.originY + Math.sin(base * 0.5) * 0.12;
     }
   });
 }
