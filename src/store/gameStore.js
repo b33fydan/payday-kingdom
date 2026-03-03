@@ -254,6 +254,13 @@ export const useGameStore = create(
           islandStage: state.islandStage,
           totalBillsSlain: state.totalBillsSlain
         };
+      },
+      resetAll: () => {
+        set(initialState);
+        localStorage.removeItem('payday-kingdom-game');
+        localStorage.removeItem('payday-kingdom-budget');
+        localStorage.removeItem('payday-kingdom-kingdom');
+        localStorage.removeItem('payday-kingdom-onboarding-complete');
       }
     }),
     {

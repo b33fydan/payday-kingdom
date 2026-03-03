@@ -292,7 +292,7 @@ export function createMonster(x, z, color = COLORS.monsterGoblin, size = 1, cate
   for (let ix = 0; ix < 2; ix += 1) {
     for (let iy = 0; iy < 2; iy += 1) {
       for (let iz = 0; iz < 2; iz += 1) {
-        addMonsterVoxel(ix - 0.5, iy + 0.5, iz - 0.5, bodyColor);
+        addMonsterVoxel((ix - 0.5) * 0.75, iy + 0.5, (iz - 0.5) * 0.75, bodyColor);
       }
     }
   }
@@ -300,7 +300,7 @@ export function createMonster(x, z, color = COLORS.monsterGoblin, size = 1, cate
   if (category === 'housing') {
     for (let iy = 0; iy < 2; iy += 1) {
       for (let iz = 0; iz < 2; iz += 1) {
-        addMonsterVoxel(-1.5, iy + 0.5, iz - 0.5, bodyColor);
+        addMonsterVoxel(-1.5, iy + 0.5, (iz - 0.5) * 0.75, bodyColor);
       }
     }
   }

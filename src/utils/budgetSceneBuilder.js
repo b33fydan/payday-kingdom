@@ -11,7 +11,7 @@ import {
 } from './voxelBuilder.js';
 
 const GROWTH_ANIMATION_MS = 500;
-const GROUND_GRID_SIZE = 20;
+const GROUND_GRID_SIZE = 24;
 const GROUND_HALF_SPAN = (GROUND_GRID_SIZE * VOXEL_SIZE) / 2;
 const GRASS_VARIANTS = [COLORS.grassDark, COLORS.grassBase, COLORS.grassLight, COLORS.grassMoss];
 const FLOWER_COLORS = ['#ef4444', '#fbbf24', '#ec4899', '#ffffff'];

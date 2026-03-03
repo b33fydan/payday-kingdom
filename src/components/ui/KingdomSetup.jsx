@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useBudgetStore } from '../../store/budgetStore.js';
+import { useGameStore } from '../../store/gameStore.js';
 import { KINGDOM_COLOR_OPTIONS } from '../../utils/kingdomTheme.js';
 
 export default function KingdomSetup({
@@ -16,6 +17,9 @@ export default function KingdomSetup({
   const bannerColor = useBudgetStore((state) => state.bannerColor || 'gold');
   const setKingdomName = useBudgetStore((state) => state.setKingdomName);
   const setBannerColor = useBudgetStore((state) => state.setBannerColor);
+  const resetAll = useGameStore((state) => state.resetAll);
+  const budgetStore = useBudgetStore((state) => state);
+  const clearBudget = useBudgetStore((state) => state.clearBudget) || (() => {});
 
   const [draftName, setDraftName] = useState(kingdomName);
   const [draftColor, setDraftColor] = useState(bannerColor);
@@ -164,6 +168,24 @@ export default function KingdomSetup({
             className="mt-3 min-h-11 w-full rounded-lg border border-sky-300/30 bg-sky-700/60 px-3 text-sm font-semibold text-white transition-colors hover:bg-sky-600"
           >
             Replay Onboarding
+          </button>
+        )}
+
+        {!isCreate && allowClose && (
+          <button
+            type="button"
+            onClick={() => {
+              const confirmed = window.confirm(
+                'Are you sure? This will reset all progress, bills, XP, and kingdom data. This cannot be undone.'
+              );
+              if (confirmed) {
+                resetAll();
+                window.location.reload();
+              }
+            }}
+            className="mt-3 min-h-11 w-full rounded-lg border border-red-500/50 bg-red-900/40 px-3 text-sm font-semibold text-red-200 transition-colors hover:bg-red-900/60"
+          >
+            Reset Game
           </button>
         )}
 
