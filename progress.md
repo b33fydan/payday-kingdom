@@ -223,3 +223,50 @@ Validation:
 Runtime test blockers in this sandbox:
 - `npm run dev -- --host 127.0.0.1 --port 5173` fails with `listen EPERM` (localhost sockets not permitted).
 - develop-web-game Playwright client fails with `ERR_MODULE_NOT_FOUND: Cannot find package 'playwright'`.
+
+Visual polish diorama pass update (March 2, 2026):
+- Reworked camera controls in `src/components/scene/IslandScene.jsx`:
+  - Zoom range expanded to min 4 / max 20.
+  - Full 360 azimuth enabled (`-Infinity` to `Infinity`).
+  - Polar lock removed (`0` to `Math.PI`).
+  - Stage-based camera clamps removed; camera now free orbit around center target.
+- Updated scene lighting/background in `IslandScene.jsx`:
+  - Background changed to `#1a3a2a`.
+  - Ambient light set to white @ 0.5.
+  - Directional light at (8, 12, 4), intensity 0.7, 1024 shadow map, +/-15 frustum bounds.
+  - Hemisphere light added (sky `0x87ceeb`, ground `0x4a7c4f`, intensity 0.3).
+- Introduced dense voxel scale in `src/utils/voxelBuilder.js`:
+  - Added `VOXEL_SIZE = 0.4` and `VOXEL_HALF = 0.2`.
+  - Scaled all `BoxGeometry` creation through the new constants.
+  - Added `createGroundVoxel` with 0.4 x 0.2 x 0.4 tile dimensions.
+- Rebuilt trees in `voxelBuilder.js`:
+  - New pine/oak/bush/dead styles with higher cube density and mixed green shades.
+  - Stage 0 now uses dead-tree style through stage builders.
+- Rebuilt monsters in `voxelBuilder.js` + `budgetSceneBuilder.js`:
+  - New body/head/eye proportions at dense scale.
+  - Amount scaling now: `<100 => 0.5`, `100-499 => 0.7`, `>=500 => 1.0`.
+  - Category accents added: housing widen, utilities orbiters, phone antenna, transport legs, food mouth gap, entertainment points.
+  - Idle bobbing amplitude reduced to 0.1 and updated each frame via new `updateDynamicEntityAnimations`.
+- Rebuilt hero in `src/utils/heroBuilder.js`:
+  - New leg/body/arm/head proportions tuned to ~1.3 unit height.
+  - Sword visuals from recruit+ with gray/gold/cyan progression.
+  - Shield for knight+ and cape for champion+.
+- Major terrain/stage rewrite in `src/utils/budgetSceneBuilder.js`:
+  - Added `buildGroundPlatform()` with 20x20 top grid and reduced jitter (0-0.08).
+  - Top grid uses `THREE.InstancedMesh` (400 tiles in one draw call) with per-instance grass color variation.
+  - Cliff edge layers added at perimeter: -0.2 dark green, -0.4 dirt brown, -0.6 stone gray.
+  - Floating underside added with 3 decreasing layers and jagged stalactite look.
+  - Stage structures rebuilt for hut/house/tower/castle with windows/doors/roof/battlements/chimney/flag/vines/torches.
+  - Environmental details included: stage 0+ rock clusters, stage 1+ flower scatter, stage 5+ drifting cloud clusters.
+- Updated constants in `src/utils/constants.js` to reflect visual pass defaults (`VOXEL_SIZE=0.4`, scene background `#1a3a2a`).
+
+Validation run:
+- `npm run build` passes after refactor.
+- Local visual runtime on `localhost:5173` is still blocked by sandbox socket permissions:
+  - `vite` fails with `Error: listen EPERM: operation not permitted 127.0.0.1:5173`.
+- Playwright loop remains unavailable in this environment due missing package:
+  - `web_game_playwright_client.js` fails with `ERR_MODULE_NOT_FOUND: Cannot find package 'playwright'`.
+
+Outstanding due environment constraints:
+- Could not perform the requested post-step visual checks (ground/trees/structures) in a live browser from this sandbox.
+- Could not measure FPS interactively in DevTools; ground instancing was applied proactively for performance headroom.
