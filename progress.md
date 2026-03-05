@@ -79,6 +79,15 @@ Day 2 update:
 - Added src/utils/budgetSceneBuilder.js for dynamic scene rebuild logic (monster size tiers, category colors, semicircle placement, income gold pile scaling, empty-state ? block, cleanup helpers).
 - IslandScene now clears/disposes old dynamic meshes before rebuilding to avoid leaks.
 
+Day 8 update (current task: scale/building/tree/collision fixes):
+- Fix 1 complete: applied global voxel shrink via `VOXEL_SCALE = 0.85` in `src/utils/voxelBuilder.js`, updated `VOXEL_SIZE`/`VOXEL_HALF`, and aligned `src/utils/constants.js` VOXEL exports.
+- Validation blocker: `npm run dev` fails in this sandbox with `listen EPERM` (cannot bind localhost port). Dev-server and local-browser screenshot validation are blocked by environment restrictions.
+- Fallback validation used: `npm run build` succeeds after Fix 1.
+- Fix 2 complete: island growth now tracks `stageSlot` upgrades for major structures (`hut` -> `house` -> `tower` -> `castle`) and removes/disposes the previous slot object before adding the new stage object.
+- Validation:
+  - `npm run dev` still blocked by sandbox port-binding `EPERM`.
+  - `npm run build` succeeds after Fix 2.
+
 Testing:
 - `npm run build` passes.
 - Automated sample data validation executed with exact requested data:

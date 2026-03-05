@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-export const VOXEL_SIZE = 0.4;
-export const VOXEL_HALF = 0.2;
+const BASE_VOXEL_SIZE = 0.4;
+export const VOXEL_SCALE = 0.85;
+export const VOXEL_SIZE = BASE_VOXEL_SIZE * VOXEL_SCALE;
+export const VOXEL_HALF = VOXEL_SIZE * 0.5;
 
 export const COLORS = {
   grassDark: '#2f7d32',
@@ -72,7 +74,7 @@ function addLocalVoxel(group, x, y, z, color, size = 1, scale = null) {
 }
 
 export function createVoxel(x, y, z, color, size = 1) {
-  const cubeSize = Math.max(0.02, VOXEL_SIZE * size);
+  const cubeSize = Math.max(VOXEL_SIZE * 0.05, VOXEL_SIZE * size);
   const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
   const material = new THREE.MeshStandardMaterial({ color });
   const mesh = new THREE.Mesh(geometry, material);
@@ -227,6 +229,16 @@ export function createTree(x, z, style = 'oak') {
   }
 
   tree.position.set(x, 0, z);
+  tree.userData.type = 'tree';
+  tree.userData.treeStyle = style;
+  tree.userData.treeSpacingRadius =
+    style === 'pine'
+      ? VOXEL_SIZE * 2.25
+      : style === 'bush'
+        ? VOXEL_SIZE * 1.95
+        : style === 'dead'
+          ? VOXEL_SIZE * 1.85
+          : VOXEL_SIZE * 2.35;
   return tree;
 }
 

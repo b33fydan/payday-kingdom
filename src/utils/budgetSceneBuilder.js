@@ -466,16 +466,22 @@ function buildStage1() {
 }
 
 function buildStage2() {
+  const hut = createHut(2.64, -1.38);
+  hut.userData.stageSlot = 'main-structure';
+
   return [
-    createHut(2.64, -1.38),
+    hut,
     createTree(-0.78, 3.54, 'oak'),
     createTree(3.6, 0.24, 'pine')
   ];
 }
 
 function buildStage3() {
+  const house = createHouse(2.64, -1.32);
+  house.userData.stageSlot = 'main-structure';
+
   return [
-    createHouse(2.64, -1.32),
+    house,
     createTree(-1.5, 2.1, 'oak'),
     createTree(0.66, 2.82, 'bush')
   ];
@@ -490,8 +496,11 @@ function buildStage4() {
 }
 
 function buildStage5() {
+  const tower = createTower(2.94, -1.38);
+  tower.userData.stageSlot = 'main-structure';
+
   return [
-    createTower(2.94, -1.38),
+    tower,
     createCloudCluster(-3.36, 6.4, -0.84),
     createCloudCluster(0.42, 7.1, 2.58),
     createCloudCluster(3.36, 6.7, -2.4)
@@ -499,8 +508,11 @@ function buildStage5() {
 }
 
 function buildStage6() {
+  const castle = createCastle(1.92, -0.66);
+  castle.userData.stageSlot = 'main-structure';
+
   return [
-    createCastle(1.92, -0.66),
+    castle,
     createTree(-3.42, 3.36, 'pine'),
     createTree(-2.82, 2.82, 'oak'),
     createTree(-2.16, 3.54, 'oak')
@@ -734,8 +746,12 @@ export function buildIslandStage(group, stage) {
   if (!group.userData.builtStages) {
     group.userData.builtStages = new Set();
   }
+  if (!group.userData.activeStageSlots) {
+    group.userData.activeStageSlots = new Map();
+  }
 
   const builtStages = group.userData.builtStages;
+  const activeStageSlots = group.userData.activeStageSlots;
   const safeStage = Math.max(0, Math.min(6, Math.floor(stage)));
   const addedObjects = [];
 
@@ -746,12 +762,24 @@ export function buildIslandStage(group, stage) {
 
     const objects = STAGE_BUILDERS[current]?.() ?? [];
     objects.forEach((object) => {
+      const slotKey = object.userData?.stageSlot;
+      if (slotKey) {
+        const previousObject = activeStageSlots.get(slotKey);
+        if (previousObject && previousObject !== object) {
+          group.remove(previousObject);
+          disposeObject3D(previousObject);
+        }
+      }
+
       if (!object.userData.growthAnimation) {
         markGrowthObject(object);
       }
 
       object.userData.islandStage = current;
       group.add(object);
+      if (slotKey) {
+        activeStageSlots.set(slotKey, object);
+      }
       addedObjects.push(object);
     });
 
