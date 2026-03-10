@@ -4,6 +4,7 @@ import AgentPanel from './components/ui/AgentPanel.jsx';
 import SeasonHUD from './components/ui/SeasonHUD.jsx';
 import CrisisModal from './components/ui/CrisisModal.jsx';
 import SaleDay from './components/ui/SaleDay.jsx';
+import OnboardingFlow from './components/ui/OnboardingFlow.jsx';
 
 export default function App() {
   return (
@@ -33,6 +34,9 @@ export default function App() {
 
       {/* Sale Day Modal */}
       <SaleDay />
+
+      {/* Onboarding Flow */}
+      <OnboardingFlow />
     </main>
   );
 }

@@ -41,6 +41,22 @@ export default function CrisisModal() {
           outcome
         });
 
+        // Apply morale delta to all agents
+        if (outcome.moraleDelta !== 0) {
+          agents.forEach((agent) => {
+            useAgentStore.getState().updateAgentMorale(agent.id, outcome.moraleDelta);
+          });
+        }
+
+        // Apply resource delta
+        if (outcome.resourceDelta) {
+          Object.entries(outcome.resourceDelta).forEach(([resource, delta]) => {
+            if (delta !== 0) {
+              useAgentStore.getState().addResource(resource, delta);
+            }
+          });
+        }
+
         // Play outcome sound
         if (outcome.moraleDelta > 0) {
           soundManager.playSaleSuccess();
@@ -49,9 +65,6 @@ export default function CrisisModal() {
         } else {
           soundManager.playResourceCollect();
         }
-
-        // TODO: Apply outcome to game state (morale, resources)
-        // This will be wired to the store in AV-005
       }
 
       // Close modal
