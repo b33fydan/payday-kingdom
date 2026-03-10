@@ -1,7 +1,8 @@
 {
-  "name": "payday-kingdom",
+  "name": "agentville",
+  "description": "Island farm management sim with opinionated AI agents. Every decision is judged.",
   "private": true,
-  "version": "0.0.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

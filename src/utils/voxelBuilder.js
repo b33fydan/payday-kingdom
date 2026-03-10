@@ -58,6 +58,25 @@ export const BILL_CATEGORY_COLORS = {
   other: COLORS.monsterTransport
 };
 
+// ============= AGENTVILLE TERRAIN TYPES =============
+export const TERRAIN_TYPES = {
+  forest: 'forest',
+  plains: 'plains',
+  wetlands: 'wetlands',
+  barren: 'barren'
+};
+
+export const TERRAIN_COLORS = {
+  forest: COLORS.leafBase, // Dark green for forest biome
+  plains: COLORS.grassLight, // Light green for plains
+  wetlands: COLORS.waterShallow, // Blue-ish for wetlands
+  barren: COLORS.stoneDark // Gray for barren
+};
+
+export function getTerrainColor(terrainType) {
+  return TERRAIN_COLORS[terrainType] || TERRAIN_COLORS.plains;
+}
+
 const LEAF_SHADES = [COLORS.leafDark, COLORS.leafBase, COLORS.leafLight];
 
 function pickLeafShade() {
