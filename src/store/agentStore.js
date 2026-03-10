@@ -121,8 +121,12 @@ const initialAgents = [
 export const useAgentStore = create(
   persist(
     (set, get) => ({
-      // ===== Island Metadata =====
+      // ===== Island Metadata & Grid =====
       islandName: initialIsland.islandName,
+      island: {
+        terrainGrid: [], // 8x8 array of terrain types
+        seed: 0
+      },
       setIslandName: (name) => {
         const nextName = sanitizeIslandName(name);
         set({ islandName: nextName });
