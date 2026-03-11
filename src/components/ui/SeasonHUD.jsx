@@ -23,6 +23,25 @@ export default function SeasonHUD() {
     advanceDay();
   };
 
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: '🏝️ AgentVille',
+          text: `Season ${season.seasonNumber}, Day ${season.currentDay}/7 - Profit: $${Math.round(profit)}`,
+          url: window.location.href
+        });
+      } else {
+        // Fallback: copy to clipboard
+        const text = `🏝️ AgentVille - Season ${season.seasonNumber}: $${Math.round(profit)} profit! 🌾🌲 Play: agentville.app`;
+        await navigator.clipboard.writeText(text);
+        alert('Copied to clipboard! Share it on social media.');
+      }
+    } catch (err) {
+      console.error('Share failed:', err);
+    }
+  };
+
   return (
     <div className="fixed bottom-4 left-4 right-4 flex flex-col gap-4 rounded-lg border border-slate-700 bg-slate-900/95 p-4 backdrop-blur md:bottom-auto md:right-4 md:w-80 md:left-auto">
       {/* Season Info */}
@@ -82,18 +101,27 @@ export default function SeasonHUD() {
         </div>
       </div>
 
-      {/* Day Advance Button */}
-      <button
-        onClick={handleAdvanceDay}
-        disabled={season.currentDay >= 7}
-        className={`rounded-lg px-4 py-3 font-bold uppercase tracking-wider transition-all ${
-          season.currentDay >= 7
-            ? 'cursor-not-allowed bg-slate-700 text-slate-500'
-            : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-95'
-        }`}
-      >
-        {season.currentDay >= 7 ? '📊 Sale Day Complete' : '⏭️ Next Day'}
-      </button>
+      {/* Action Buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleAdvanceDay}
+          disabled={season.currentDay >= 7}
+          className={`flex-1 rounded-lg px-4 py-3 font-bold uppercase tracking-wider transition-all ${
+            season.currentDay >= 7
+              ? 'cursor-not-allowed bg-slate-700 text-slate-500'
+              : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-95'
+          }`}
+        >
+          {season.currentDay >= 7 ? '📊 Sale Day Complete' : '⏭️ Next Day'}
+        </button>
+        <button
+          onClick={handleShare}
+          className="rounded-lg px-3 py-3 font-bold bg-green-600 hover:bg-green-500 text-white transition-all active:scale-95"
+          title="Share your progress"
+        >
+          📤 Share
+        </button>
+      </div>
 
       {/* Sale Day Message */}
       {season.currentDay >= 7 && (

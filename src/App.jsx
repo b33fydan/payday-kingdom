@@ -6,6 +6,7 @@ import CrisisModal from './components/ui/CrisisModal.jsx';
 import SaleDay from './components/ui/SaleDay.jsx';
 import OnboardingFlow from './components/ui/OnboardingFlow.jsx';
 import LandingPage from './components/ui/LandingPage.jsx';
+import RiotModal from './components/ui/RiotModal.jsx';
 
 const GAME_STARTED_KEY = 'agentville-game-started';
 
@@ -52,6 +53,9 @@ export default function App() {
 
       {/* Onboarding Flow */}
       <OnboardingFlow />
+
+      {/* Riot Modal (Viral Feature) */}
+      <RiotModal />
     </main>
   );
 }
