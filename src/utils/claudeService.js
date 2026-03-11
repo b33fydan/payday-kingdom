@@ -8,8 +8,8 @@
  */
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
-const CLAUDE_MODEL_HAIKU = 'claude-3-5-haiku-20241022';
-const CLAUDE_MODEL_SONNET = 'claude-3-5-sonnet-20241022';
+const CLAUDE_MODEL_HAIKU = 'claude-haiku-4-5-20251001';
+const CLAUDE_MODEL_SONNET = 'claude-sonnet-4-6';
 const DAILY_CALL_LIMIT = 10;
 const CALL_TRACKER_KEY = 'agentville-claude-calls';
 
@@ -83,7 +83,7 @@ export async function generateAgentReview({
 
   try {
     const prompt = buildReviewPrompt(agentNames, avgMorale, profit, season);
-    const response = await callClaude(prompt, CLAUDE_MODEL_HAIKU, 150);
+    const response = await callClaude(prompt, CLAUDE_MODEL_SONNET, 150);
     incrementCallCount();
     
     return {
