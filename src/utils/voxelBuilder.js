@@ -441,3 +441,223 @@ export function createGroup(meshes = []) {
   meshes.forEach((mesh) => group.add(mesh));
   return group;
 }
+
+// ============= AGENTVILLE RESOURCE PROPS =============
+
+/**
+ * Creates a wheat field cluster at position.
+ * @param {number} x - Grid X position
+ * @param {number} z - Grid Z position 
+ * @param {number} growthStage - 0=empty, 1=sprouts, 2=half, 3=full golden stalks
+ * @returns {THREE.Group}
+ */
+export function createWheatField(x, z, growthStage = 3) {
+  const field = new THREE.Group();
+
+  if (growthStage === 0) {
+    // Bare dirt: single flat brown cube
+    const dirt = createVoxel(x, VOXEL_HALF * 0.5, z, COLORS.woodDark, 0.8);
+    dirt.scale.set(1.2, 0.3, 1.2);
+    field.add(dirt);
+    return field;
+  }
+
+  // Determine stalk count and height based on growth stage
+  const stalkCount = growthStage === 1 ? 3 : growthStage === 2 ? 6 : 10;
+  const baseHeight = growthStage === 1 ? 0.2 : growthStage === 2 ? 0.4 : 0.6;
+  const color = growthStage === 1 ? COLORS.grassBase : COLORS.gold;
+
+  for (let i = 0; i < stalkCount; i++) {
+    const offsetX = (Math.random() - 0.5) * 0.4;
+    const offsetZ = (Math.random() - 0.5) * 0.4;
+    const stalkX = x + offsetX;
+    const stalkZ = z + offsetZ;
+    const stalkHeight = baseHeight + (Math.random() - 0.5) * 0.1;
+    const lean = (Math.random() - 0.5) * 0.15; // Organic lean
+
+    const stalk = createVoxel(stalkX + lean, VOXEL_HALF + stalkHeight * 0.5, stalkZ, color, 0.4);
+    stalk.scale.set(0.05, stalkHeight, 0.05);
+    stalk.rotation.z = lean * 0.5;
+    field.add(stalk);
+  }
+
+  return field;
+}
+
+/**
+ * Creates hay bales at position.
+ * @param {number} x - Grid X position
+ * @param {number} z - Grid Z position
+ * @param {number} count - Number of bales (1-3)
+ * @returns {THREE.Group}
+ */
+export function createHayBale(x, z, count = 1) {
+  const group = new THREE.Group();
+  const baleSize = 0.35;
+  const baleColor = COLORS.goldLight;
+
+  for (let i = 0; i < count; i++) {
+    const baleX = i === 0 ? x : i === 1 ? x - 0.25 : x + 0.25;
+    const baleZ = i === 0 ? z : z;
+    const baleY = VOXEL_HALF + i * 0.15; // Stack slightly
+
+    const bale = createVoxel(baleX, baleY, baleZ, baleColor, 0.7);
+    bale.scale.set(1.1, 0.7, 1.1); // Slightly squished
+    bale.rotation.y = Math.random() * 0.3;
+    group.add(bale);
+  }
+
+  return group;
+}
+
+/**
+ * Creates a log pile at position.
+ * @param {number} x - Grid X position
+ * @param {number} z - Grid Z position
+ * @param {number} count - Number of logs (1-5)
+ * @returns {THREE.Group}
+ */
+export function createLogPile(x, z, count = 1) {
+  const pile = new THREE.Group();
+  const logColor = COLORS.woodDark;
+
+  const logPositions = [
+    [0, 0],           // Layer 1
+    [-0.2, 0.2],      // Layer 2
+    [0.2, -0.2],
+    [-0.25, -0.25],   // Layer 3
+    [0.25, 0.25]
+  ];
+
+  for (let i = 0; i < Math.min(count, 5); i++) {
+    const [offsetX, offsetZ] = logPositions[i] || [0, 0];
+    const logY = VOXEL_HALF + i * 0.12;
+
+    const log = createVoxel(x + offsetX, logY, z + offsetZ, logColor, 0.6);
+    log.scale.set(0.35, 0.2, 1.2); // Elongated horizontally (rotated on Z)
+    log.rotation.z = Math.PI * 0.5 * (i % 2); // Alternate orientation
+    log.rotation.y = (Math.random() - 0.5) * 0.2;
+    pile.add(log);
+  }
+
+  return pile;
+}
+
+/**
+ * Creates a farmhouse at position (island center building).
+ * @param {number} x - Grid X position
+ * @param {number} z - Grid Z position
+ * @returns {THREE.Group}
+ */
+export function createFarmhouse(x, z) {
+  const house = new THREE.Group();
+
+  // Main base (walls)
+  const base = createVoxel(x, VOXEL_HALF + 0.3, z, COLORS.woodBase, 1.2);
+  base.scale.set(1.2, 0.8, 1.0);
+  house.add(base);
+
+  // Roof (two-sided pitched roof)
+  const roofLeft = createVoxel(x - 0.3, VOXEL_HALF + 0.8, z, '#8b4513', 1.0);
+  roofLeft.scale.set(0.7, 0.3, 1.0);
+  roofLeft.rotation.z = Math.PI * 0.15;
+  house.add(roofLeft);
+
+  const roofRight = createVoxel(x + 0.3, VOXEL_HALF + 0.8, z, '#6b3410', 1.0);
+  roofRight.scale.set(0.7, 0.3, 1.0);
+  roofRight.rotation.z = -Math.PI * 0.15;
+  house.add(roofRight);
+
+  // Door (dark rectangle on front)
+  const door = createVoxel(x, VOXEL_HALF + 0.2, z + 0.42, COLORS.stoneDark, 0.5);
+  door.scale.set(0.4, 0.6, 0.1);
+  house.add(door);
+
+  // Window (tiny square on side)
+  const window = createVoxel(x + 0.5, VOXEL_HALF + 0.4, z, COLORS.waterShallow, 0.3);
+  window.scale.set(0.25, 0.25, 0.1);
+  house.add(window);
+
+  house.position.set(x, 0, z);
+  return house;
+}
+
+/**
+ * Creates a zone flag at position.
+ * @param {number} x - Grid X position
+ * @param {number} z - Grid Z position
+ * @param {string} color - Hex color matching agent identity color
+ * @returns {THREE.Group}
+ */
+export function createFlag(x, z, color) {
+  const flag = new THREE.Group();
+
+  // Pole (thin gray cylinder, approximated as tall thin box)
+  const pole = createVoxel(x, VOXEL_HALF + 0.4, z, COLORS.stoneDark, 0.6);
+  pole.scale.set(0.1, 1.0, 0.1);
+  flag.add(pole);
+
+  // Flag (rectangular cloth at top)
+  const cloth = createVoxel(x + 0.15, VOXEL_HALF + 0.9, z, color, 0.8);
+  cloth.scale.set(0.3, 0.2, 0.05);
+  cloth.rotation.z = 0.2; // Slight tilt for motion feel
+  flag.add(cloth);
+
+  flag.position.set(x, 0, z);
+  return flag;
+}
+
+/**
+ * Creates fire effect at position (for riot sequence).
+ * @param {number} x - Grid X position
+ * @param {number} z - Grid Z position
+ * @returns {THREE.Group}
+ */
+export function createFireEffect(x, z) {
+  const fire = new THREE.Group();
+  const fireColors = [COLORS.bronze, '#f97316', COLORS.goldLight];
+
+  for (let i = 0; i < 5; i++) {
+    const fireColor = fireColors[i % fireColors.length];
+    const offsetX = (Math.random() - 0.5) * 0.3;
+    const offsetZ = (Math.random() - 0.5) * 0.3;
+    const flameY = VOXEL_HALF + Math.random() * 0.8;
+
+    const flame = createVoxel(x + offsetX, flameY, z + offsetZ, fireColor, 0.5);
+    flame.scale.set(0.3, 0.6 + Math.random() * 0.3, 0.3);
+    fire.add(flame);
+  }
+
+  fire.position.set(x, 0, z);
+  return fire;
+}
+
+/**
+ * Creates a sparkle/particle effect at position.
+ * @param {number} x - Grid X position
+ * @param {number} z - Grid Z position
+ * @param {string} color - Hex color for sparkles
+ * @returns {THREE.Group}
+ */
+export function createSparkle(x, z, color = COLORS.goldLight) {
+  const sparkles = new THREE.Group();
+
+  for (let i = 0; i < 6; i++) {
+    const offsetX = (Math.random() - 0.5) * 0.25;
+    const offsetZ = (Math.random() - 0.5) * 0.25;
+    const sparkleY = VOXEL_HALF + Math.random() * 0.6;
+
+    const sparkle = createVoxel(x + offsetX, sparkleY, z + offsetZ, color, 0.08);
+    sparkle.material = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.7,
+      transparent: true,
+      opacity: 0.7
+    });
+    sparkles.add(sparkle);
+  }
+
+  sparkles.position.set(x, 0, z);
+  return sparkles;
+}
