@@ -2,9 +2,11 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { useAgentStore } from '../../store/agentStore.js';
+import { useGameStore } from '../../store/gameStore.js';
 import { generateTerrainGrid, buildTerrainScene } from '../../utils/terrainBuilder.js';
 import { createAgentModel, createAgentLabel } from '../../utils/agentBuilder.js';
 import { VOXEL_SIZE, VOXEL_HALF, COLORS } from '../../utils/voxelBuilder.js';
+import { IslandSceneManager } from '../../utils/islandSceneManager.js';
 
 const SCENE_WIDTH = window.innerWidth;
 const SCENE_HEIGHT = window.innerHeight;
@@ -16,10 +18,12 @@ export default function IslandScene() {
   const rendererRef = useRef(null);
   const controlsRef = useRef(null);
   const terrainGroupRef = useRef(null);
-  const agentGroupRef = useRef(null);
   const animationFrameRef = useRef(null);
+  const sceneManagerRef = useRef(null);
 
   const agents = useAgentStore((state) => state.agents);
+  const resources = useGameStore((state) => state.resources);
+  const terrain = useGameStore((state) => state.terrain);
 
   // ============= Scene Setup =============
 
@@ -103,24 +107,23 @@ export default function IslandScene() {
     scene.add(terrainGroup);
     terrainGroupRef.current = terrainGroup;
 
-    // Agent group
-    const agentGroup = new THREE.Group();
-    scene.add(agentGroup);
-    agentGroupRef.current = agentGroup;
-
     // ============= Generate Terrain Grid =============
 
     const terrainGrid = generateTerrainGrid(12345); // Fixed seed for consistency
     const terrainScene = buildTerrainScene(terrainGrid, 0.6);
     terrainGroup.add(terrainScene);
 
-    // Store in agent store for later reference
-    useAgentStore.setState({
-      island: {
-        terrainGrid,
-        seed: 12345
-      }
+    // Store in game store for reference
+    useGameStore.setState({
+      terrain: terrainGrid,
+      islandSeed: 12345
     });
+
+    // ============= Initialize Scene Manager =============
+
+    const sceneManager = new IslandSceneManager(scene, terrainGrid);
+    sceneManager.initStaticProps(); // Add farmhouse
+    sceneManagerRef.current = sceneManager;
 
     // ============= Animation Loop =============
 
@@ -155,6 +158,11 @@ export default function IslandScene() {
       window.removeEventListener('resize', handleResize);
       window.cancelAnimationFrame(animationId);
 
+      // Cleanup scene manager
+      if (sceneManagerRef.current) {
+        sceneManagerRef.current.dispose();
+      }
+
       if (mountRef.current && renderer.domElement.parentNode === mountRef.current) {
         mountRef.current.removeChild(renderer.domElement);
       }
@@ -163,58 +171,14 @@ export default function IslandScene() {
     };
   }, []);
 
-  // ============= Render Agents =============
+  // ============= Sync Scene Manager =============
 
   useEffect(() => {
-    if (!agentGroupRef.current || !agents || agents.length === 0) return;
+    if (!sceneManagerRef.current) return;
 
-    // Clear old agents
-    agentGroupRef.current.clear();
-
-    // Add new agents with enhanced models + labels
-    agents.forEach((agent, index) => {
-      const agentWrapper = new THREE.Group();
-
-      // Create enhanced voxel model
-      const agentModel = createAgentModel(agent);
-      agentWrapper.add(agentModel);
-
-      // Create label with name + morale bar
-      const label = createAgentLabel(agent);
-      agentModel.add(label);
-
-      // Position agent based on zone assignment
-      let agentX = 0;
-      let agentZ = 0;
-
-      if (agent.assignedZone) {
-        // Position agents in their assigned zones (biome clusters)
-        // Forest = left, Plains = center, Wetlands = right
-        const zonePositions = {
-          forest: { x: -2, z: 0 },
-          plains: { x: 0, z: 1 },
-          wetlands: { x: 2, z: 0 }
-        };
-        const pos = zonePositions[agent.assignedZone] || zonePositions.plains;
-        agentX = pos.x + (Math.random() - 0.5) * 0.4; // Small randomness
-        agentZ = pos.z + (Math.random() - 0.5) * 0.4;
-      } else {
-        // Default starting positions (bottom of island)
-        const defaultPositions = [
-          { x: -2, z: -2 },
-          { x: 0, z: -2.2 },
-          { x: 2, z: -2 }
-        ];
-        const pos = defaultPositions[index % defaultPositions.length];
-        agentX = pos.x;
-        agentZ = pos.z;
-      }
-
-      agentWrapper.position.set(agentX, 0.5, agentZ);
-      agentWrapper.userData.agentId = agent.id;
-      agentGroupRef.current.add(agentWrapper);
-    });
-  }, [agents]);
+    // Sync agents and resources whenever they change
+    sceneManagerRef.current.syncScene(agents, resources, terrain);
+  }, [agents, resources, terrain]);
 
   return <div ref={mountRef} style={{ width: '100vw', height: '100vh', overflow: 'hidden' }} />;
 }
